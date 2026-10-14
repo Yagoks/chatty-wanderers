@@ -108,7 +108,7 @@
 #token-hud .col.right { position: relative; }
 #token-hud .cw-palette { display: none; position: absolute; left: calc(100% + 8px); gap: 4px; padding: 3px; border-radius: 6px;
   background: rgba(0, 0, 0, 0.6); box-shadow: 0 0 8px #000; z-index: 10; }
-#token-hud .cw-palette.active { display: flex; }
+#token-hud .cw-palette.active { display: flex; flex-direction: column; }
 #token-hud .cw-palette .control-icon { margin: 0; }
 #token-hud .cw-palette .cw-has i { color: #e8b84a; }
 #token-hud .cw-palette .cw-muted i { color: #e07a5f; }

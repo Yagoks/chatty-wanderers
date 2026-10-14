@@ -101,7 +101,7 @@ player's tokens are, quieter through walls and closed doors. Nothing to attach o
 - The GM hears from the selected token, or from the middle of the screen when nothing is selected.
 
 ## Where the buttons are
-- **Token HUD:** one walker button; it opens a row beside it with route & reactions, who is noticed, speech, sounds and
+- **Token HUD:** one walker button; it opens a column beside the HUD with route & reactions, who is noticed, speech, sounds and
   mute.
 - **Left toolbar (Token controls):** one walker button; it opens a row with pause patrols, scene alert (with its level),
   mute all token sounds and speech on/off. It turns orange while the alert is above 0 or something is paused/muted.

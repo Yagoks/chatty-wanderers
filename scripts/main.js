@@ -169,8 +169,9 @@ function onRenderTokenHUD(hud, html) {
   }
   col.append(palette);
 
+  // A column beside the HUD, ending level with the button (it grows upward like the HUD itself).
   const place = () => {
-    palette.style.top = `${main.offsetTop}px`;
+    palette.style.top = `${main.offsetTop + main.offsetHeight - palette.offsetHeight}px`;
   };
   main.addEventListener("click", ev => {
     ev.preventDefault();
