@@ -118,7 +118,7 @@ export class RouteEditor extends ApplicationV2 {
     const route = this.route;
     const patrol = this.patrol;
     const status = patrol.status ?? "stopped";
-    const statusLabel = { patrolling: "Patrolling", stopped: "Stopped", detached: "Off its route (stopped)" }[status] ?? status;
+    const statusLabel = { patrolling: "Patrolling", stopped: "Stopped", detached: "Off its route (stopped)", spotted: "Spotted someone", alerted: "Alerted" }[status] ?? status;
     const opts = (map, cur) => Object.entries(map).map(([k, v]) => `<option value="${k}" ${k === cur ? "selected" : ""}>${esc(v)}</option>`).join("");
     const root = document.createElement("div");
     root.className = "cw-root";
@@ -139,6 +139,11 @@ export class RouteEditor extends ApplicationV2 {
       <label class="cw-check"><input type="checkbox" data-r="openDoors" ${route.openDoors !== false ? "checked" : ""}> Opens unlocked doors</label>
       <label class="cw-check"><input type="checkbox" data-r="closeDoors" ${route.closeDoors !== false ? "checked" : ""}> Closes them behind it</label>
       <label class="cw-field"><span>Speed ×</span><input type="number" step="0.1" min="0.1" data-p="speed" value="${esc(patrol.speed ?? 1)}"></label>
+      <fieldset class="cw-vision"><legend>Vision</legend>
+        <label class="cw-check"><input type="checkbox" data-v="enabled" ${patrol.vision?.enabled !== false ? "checked" : ""}> Spots intruders</label>
+        <label class="cw-field"><span>Angle (°)</span><input type="number" min="10" max="360" step="5" data-v="angle" value="${esc(patrol.vision?.angle ?? "")}" placeholder="${setting("coneAngle")}"></label>
+        <label class="cw-field"><span>Range (ft)</span><input type="number" min="5" step="5" data-v="range" value="${esc(patrol.vision?.range ?? "")}" placeholder="${setting("coneRange")}"></label>
+      </fieldset>
       <div class="cw-points">
         ${route.points.map((p, i) => `
           <div class="cw-point"><b>${i + 1}</b>
@@ -171,6 +176,10 @@ export class RouteEditor extends ApplicationV2 {
     }));
     el.querySelectorAll("[data-p]").forEach(inp => inp.addEventListener("change", async () => {
       await this.td.update({ [`flags.${MODULE_ID}.patrol.${inp.dataset.p}`]: Number(inp.value) || 1 }, { [MODULE_ID]: true });
+    }));
+    el.querySelectorAll("[data-v]").forEach(inp => inp.addEventListener("change", async () => {
+      const value = inp.type === "checkbox" ? inp.checked : (inp.value === "" ? null : Number(inp.value));
+      await this.td.update({ [`flags.${MODULE_ID}.patrol.vision.${inp.dataset.v}`]: value }, { [MODULE_ID]: true });
     }));
     el.querySelectorAll("[data-wait]").forEach(inp => inp.addEventListener("change", async () => {
       const route = this.route;

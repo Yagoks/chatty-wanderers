@@ -2,6 +2,7 @@
 // One shared clock: on every tick each patroller that has built up enough movement takes one grid step, and all the
 // steps go out in a single update. Slower creatures simply step on fewer ticks.
 
+import { checkSpotting } from "./spotting.js";
 import { MODULE_ID, cellKey, cellOf, centerOf, clearPathCache, findPath, sameCell, stepInfo, tokenCenter, tokenPositionFor } from "./pathing.js";
 
 /** Per-token runtime state (memory only). */
@@ -199,6 +200,7 @@ async function tick() {
     await scene.updateEmbeddedDocuments("Token", tokenUpdates,
       { [MODULE_ID]: true, animation: { duration: Math.max(150, setting("tickMs") * 0.95) } });
   }
+  await checkSpotting(scene);
 }
 
 export function stopClock() {

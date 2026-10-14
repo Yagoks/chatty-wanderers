@@ -3,6 +3,8 @@
 import { MODULE_ID, findPath, cellOf } from "./pathing.js";
 import { getPatrol, getRoutes, registerPatrol, resetRuntime, scenePatrollers, setStatus, setting, startClock, stopClock } from "./patrol.js";
 import { RouteEditor, clearOverlay, showSelectedRoute } from "./editor.js";
+import { drawCones, noticeClass, registerVision } from "./vision.js";
+import { registerSpotting } from "./spotting.js";
 
 /* -------------------------------------------- */
 /*  Global pause button (next to the chat)      */
@@ -54,6 +56,24 @@ function onRenderTokenHUD(hud, html) {
     RouteEditor.open(td);
   });
   col.append(btn);
+
+  // Who patrols notice: automatic (rules), always an intruder, or always ignored.
+  const notice = foundry.utils.getProperty(td.flags ?? {}, `${MODULE_ID}.notice`) ?? "auto";
+  const auto = noticeClass(td);
+  const icons = { auto: auto === "intruder" ? "fa-eye" : "fa-eye-low-vision", intruder: "fa-eye", ignored: "fa-eye-slash" };
+  const labels = { auto: `Patrols: automatic (${auto})`, intruder: "Patrols: always noticed", ignored: "Patrols: always ignored" };
+  const nb = document.createElement("button");
+  nb.type = "button";
+  nb.className = `control-icon cw-notice cw-notice-${notice}`;
+  nb.dataset.tooltip = `${labels[notice]} — click to change`;
+  nb.innerHTML = `<i class="fa-solid ${icons[notice]}"></i>`;
+  nb.addEventListener("click", async ev => {
+    ev.preventDefault();
+    const next = { auto: "intruder", intruder: "ignored", ignored: "auto" }[notice];
+    await td.update({ [`flags.${MODULE_ID}.notice`]: next === "auto" ? null : next });
+    hud.render();
+  });
+  col.append(nb);
 }
 
 /* -------------------------------------------- */
@@ -68,12 +88,31 @@ Hooks.once("init", () => {
   });
   reg("speed", { name: "Global speed ×", hint: "Multiplies every patroller's speed.", type: Number, default: 1, range: { min: 0.25, max: 3, step: 0.25 } });
   reg("paused", { name: "Patrols paused", type: Boolean, default: false, config: false, onChange: () => refreshGlobalButton() });
+  const choice = (key, name, hint, choices, def) => reg(key, { name, hint, type: String, choices, default: def });
+  reg("showCones", { name: "Show vision cones", type: Boolean, default: true, onChange: () => drawCones() });
+  reg("conesForPlayers", { name: "Players see the cones", hint: "Off: only the GM sees them.", type: Boolean, default: false, onChange: () => drawCones() });
+  reg("coneColor", { name: "Cone color", type: new foundry.data.fields.ColorField({ initial: "#ff6b3d" }), default: "#ff6b3d", onChange: () => drawCones() });
+  reg("coneOpacity", { name: "Cone opacity", type: Number, default: 0.15, range: { min: 0.02, max: 0.6, step: 0.01 }, onChange: () => drawCones() });
+  reg("coneAngle", { name: "Default cone angle (degrees)", type: Number, default: 100, range: { min: 20, max: 360, step: 5 } });
+  reg("coneRange", { name: "Default cone range (ft)", type: Number, default: 60, range: { min: 5, max: 300, step: 5 } });
+  choice("summonRule", "Summons of the players", "Summoned creatures of the players.", {
+    smallBeasts: "Tiny/Small beasts blend in (ignored); others are noticed", intruder: "Always noticed", ignored: "Always ignored" }, "smallBeasts");
+  choice("companionRule", "Other creatures of the players", "Player-owned non-character actors that aren't summons (companions, mounts).", {
+    intruder: "Noticed", ignored: "Ignored" }, "intruder");
+  reg("pauseOnSpot", { name: "Pause the game when someone is spotted", type: Boolean, default: true });
+  choice("stealthMode", "Stealth rolls", "Who rolls Stealth when someone is spotted.", {
+    players: "Each player rolls their own (GM rolls the rest)", epic: "Epic Rolls", gm: "The GM rolls them all" }, "players");
+  reg("stealthTimeout", { name: "Seconds players have to roll", type: Number, default: 30, range: { min: 10, max: 120, step: 5 } });
+  reg("spotCooldown", { name: "Seconds before the same patroller can spot the same target again", type: Number, default: 30, range: { min: 5, max: 300, step: 5 } });
+  reg("discoveredMacro", { name: "Macro when someone is discovered", hint: "Name of a macro to run (receives patroller, targets, scene). Leave empty for none.", type: String, default: "" });
   game.settings.register(MODULE_ID, "showSelected", {
     name: "Show the route of a selected patroller", hint: "GM only: a faint drawing of its route while the token is selected.",
     scope: "client", config: true, type: Boolean, default: true
   });
 
   registerPatrol();
+  registerVision();
+  registerSpotting();
   game.modules.get(MODULE_ID).api = {
     openEditor: td => RouteEditor.open(td?.document ?? td),
     start: (td, index = 0) => setStatus(td?.document ?? td, "patrolling", { index }),

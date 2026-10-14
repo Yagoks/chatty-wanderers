@@ -23,3 +23,15 @@
 .cw-editor button.active { background: rgba(232, 184, 74, 0.35); border-color: #e8b84a; }
 .cw-editor .cw-hint { margin: 0; font-size: 11px; opacity: 0.75; }
 .cw-editor .cw-controls button { flex: 1; }
+
+.cw-editor .cw-status.cw-spotted, .cw-editor .cw-status.cw-alerted { background: #8a1212; }
+.cw-editor .cw-vision { border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; }
+.cw-editor .cw-vision legend { font-size: 11px; padding: 0 4px; }
+.cw-notice-intruder { box-shadow: 0 0 6px #e85a4a; }
+.cw-notice-ignored { opacity: 0.7; }
+
+.cw-card p { margin: 0 0 4px; }
+.cw-card .cw-card-buttons { display: flex; flex-direction: column; gap: 3px; }
+.cw-card .cw-result ul { margin: 2px 0; padding-left: 16px; }
+.cw-card .cw-ok { color: #2d8a3e; }
+.cw-card .cw-fail { color: #b0302a; }

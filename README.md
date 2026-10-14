@@ -1,7 +1,7 @@
 # Chatty Wanderers
 
-Gives life to tokens in Foundry VTT v13. **Stage 1: patrol routes.** Vision cones, spotting, alert levels and speech
-bubbles come next.
+Gives life to tokens in Foundry VTT v13: patrol routes, vision cones and spotting. Alert levels and speech bubbles come
+next.
 
 ## Patrol routes
 - **Token HUD → route button** (GM) opens the route editor for that token.
@@ -21,3 +21,24 @@ bubbles come next.
 - Creatures can't share a square (dnd5e): a patroller waits for a blocker to move, then goes around.
 
 Settings: clock (ms), global speed, show the route of a selected patroller.
+
+## Vision cones
+- Each patroller sees through a cone clipped by walls, facing the way it walks. Angle and range per token (route editor)
+  with global defaults.
+- Settings: show cones, players also see them, color and opacity.
+- A target is seen when it is inside the cone, lit or within the patroller's darkvision, and not invisible (truesight
+  and blindsight see through invisibility).
+
+## Who is noticed
+- Player characters, by default.
+- Summons of the players follow a rule: Tiny/Small beasts blend in as local fauna (ignored), or always noticed, or
+  always ignored. Other player-owned creatures (companions, mounts): noticed or ignored.
+- **Token HUD → eye button** on any token: automatic, always noticed, always ignored.
+
+## When someone is spotted
+- The patroller stops and faces the target; the game can pause.
+- The GM gets a card: **Standing** (DC = passive Perception), **Searching** (roll Perception, DC = result), or
+  **False alarm**.
+- The targets roll Stealth: each player from their own client (GM rolls on timeout), through Epic Rolls, or all by the
+  GM. Anyone who fails is **discovered**: the patroller becomes *alerted*, the `chatty-wanderers.discovered` hook fires
+  and an optional macro runs. Otherwise it carries on, and won't spot the same target again for a while.
