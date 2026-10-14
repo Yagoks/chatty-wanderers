@@ -73,3 +73,25 @@
 .cw-editor .cw-react-extra select { flex: 1 1 120px; }
 .cw-editor .cw-react-extra button { width: auto; flex: 0 0 auto; padding: 0 6px; }
 .cw-alert h4 .cw-mini { width: auto; height: 20px; line-height: 18px; padding: 0 5px; font-size: 11px; margin-left: 4px; }
+
+/* Speech */
+#chat-bubbles .cw-bubble { width: max-content; max-width: 400px; }
+#chat-bubbles .cw-bubble.cw-hidden { opacity: 0.6; }
+#chat-bubbles .cw-bubble .cw-lang { display: block; font-size: 10px; font-style: italic; opacity: 0.7; margin-bottom: 1px; }
+.cw-speech .cw-speech-root { display: flex; flex-direction: column; gap: 6px; padding: 4px; }
+.cw-speech .cw-token { display: flex; align-items: center; gap: 6px; margin: 0; }
+.cw-speech .cw-token img { width: 32px; height: 32px; border: none; object-fit: contain; }
+.cw-speech .cw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+.cw-speech .cw-field { display: grid; grid-template-columns: 1fr 1.3fr; align-items: center; gap: 6px; font-size: 12px; }
+.cw-speech .cw-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.cw-speech .cw-lines { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; }
+.cw-speech .cw-line { display: flex; flex-direction: column; gap: 3px; padding: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.05); }
+.cw-speech .cw-line textarea { resize: vertical; min-height: 38px; }
+.cw-speech .cw-line-opts { display: flex; gap: 4px; align-items: center; font-size: 12px; }
+.cw-speech .cw-line-opts select { flex: 1 1 0; min-width: 0; }
+.cw-speech .cw-line-opts label { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; white-space: nowrap; }
+.cw-speech .cw-line-opts input[type="number"] { width: 44px; flex: 0 0 44px; }
+.cw-speech .cw-line-opts button { width: auto; flex: 0 0 auto; padding: 0 6px; }
+.cw-speech .cw-hint { margin: 0; font-size: 11px; opacity: 0.75; }
+.cw-speech-tab.cw-has-lines i { color: #e8b84a; }
+#chat-bubbles .cw-bubble .cw-text { line-height: 1.25; }

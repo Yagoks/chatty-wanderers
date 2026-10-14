@@ -69,3 +69,19 @@ In the token's window (Token HUD → route button), **On alert** lists the level
 Before its first reaction the token's usual state is saved; when the alert drops to a level without a reaction it walks
 back and resumes. Points to go to show as red diamonds (A1, A2…) while the token is selected. Moving a reacting token
 by hand makes it stay there. Tokens holding a post or following the alert also keep watch with their vision cone.
+
+## Speech bubbles
+Lines over a token's head — never in the chat, and the camera never moves. Good for guards, merchants, a busy street.
+- Open them from the **speech icon** in the sheet's tab column (or the Token HUD). On the actor's sheet the lines serve
+  every token of that actor; on an unlinked token's sheet, only that token.
+- Per sheet: talks on/off, default language, idle chatter (always / only with players nearby / never), what "nearby"
+  means in feet, pause between lines, in order or random.
+- Per line: the text, when it is said (idle chatter, when players come near, when it spots someone, when it discovers
+  someone, when the alert goes up), its language (else the sheet's) and how many seconds it stays up (empty = time to
+  read it). Preview (only you) and "say it now" (everyone) buttons.
+- **Languages:** each player's client decides. Who knows the language (their character, or Polyglot's known languages)
+  reads the line; who doesn't sees it scrambled — in the language's Polyglot font when Polyglot is active. The GM always
+  reads it, with the language as a small tag.
+- Bubbles follow walking tokens. Hidden tokens and tokens a player can't see don't show bubbles to that player.
+- Settings: speech on/off, keep talking during combat, and (per player) show speech bubbles.
+- API: `game.modules.get("chatty-wanderers").api.say(token, text, { language, seconds })`, `api.openSpeech(actor)`.

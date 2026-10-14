@@ -5,6 +5,7 @@ import { getPatrol, getRoutes, registerPatrol, resetRuntime, scenePatrollers, se
 import { RouteEditor, clearOverlay, showSelectedRoute } from "./editor.js";
 import { drawCones, noticeClass, registerVision } from "./vision.js";
 import { registerSpotting } from "./spotting.js";
+import { SpeechEditor, registerSpeech, say, startSpeech, stopSpeech } from "./speech.js";
 import { AlertPanel, alertOp, getConfig as getAlertConfig, getState as getAlertState, registerAlert } from "./alert.js";
 
 /* -------------------------------------------- */
@@ -94,6 +95,17 @@ function onRenderTokenHUD(hud, html) {
     hud.render();
   });
   col.append(nb);
+
+  const sb = document.createElement("button");
+  sb.type = "button";
+  sb.className = "control-icon cw-speech-hud";
+  sb.dataset.tooltip = "Speech bubbles";
+  sb.innerHTML = `<i class="fa-solid fa-comment-dots"></i>`;
+  sb.addEventListener("click", ev => {
+    ev.preventDefault();
+    if (td.actor) SpeechEditor.open(td.actor);
+  });
+  col.append(sb);
 }
 
 /* -------------------------------------------- */
@@ -127,6 +139,11 @@ Hooks.once("init", () => {
   reg("stealthTimeout", { name: "Seconds players have to roll", type: Number, default: 30, range: { min: 10, max: 120, step: 5 } });
   reg("spotCooldown", { name: "Seconds before the same patroller can spot the same target again", type: Number, default: 30, range: { min: 5, max: 300, step: 5 } });
   reg("discoveredMacro", { name: "Macro when someone is discovered", hint: "Name of a macro to run (receives patroller, targets, scene). Leave empty for none.", type: String, default: "" });
+  reg("speechEnabled", { name: "Speech bubbles", hint: "Tokens say their lines (idle chatter, greetings, patrol events).", type: Boolean, default: true });
+  reg("speechInCombat", { name: "Keep talking during combat", type: Boolean, default: false });
+  game.settings.register(MODULE_ID, "showBubbles", {
+    name: "Show speech bubbles", hint: "Only for you.", scope: "client", config: true, type: Boolean, default: true
+  });
   game.settings.register(MODULE_ID, "showSelected", {
     name: "Show the route of a selected patroller", hint: "GM only: a faint drawing of its route while the token is selected.",
     scope: "client", config: true, type: Boolean, default: true
@@ -136,12 +153,15 @@ Hooks.once("init", () => {
   registerAlert();
   registerVision();
   registerSpotting();
+  registerSpeech();
   game.modules.get(MODULE_ID).api = {
     openEditor: td => RouteEditor.open(td?.document ?? td),
     start: (td, index = 0) => setStatus(td?.document ?? td, "patrolling", { index }),
     stop: td => setStatus(td?.document ?? td, "stopped"),
     pauseAll: (paused = true) => game.settings.set(MODULE_ID, "paused", paused),
-    getRoutes, findPath, cellOf, stopClock,
+    getRoutes, findPath, cellOf, stopClock: () => { stopClock(); stopSpeech(); },
+    say: (token, text, opts) => say(token, text, opts),
+    openSpeech: actor => SpeechEditor.open(actor?.actor ?? actor),
     alert: {
       raise: (scene, opts) => alertOp(scene ?? canvas.scene, "raise", opts),
       lower: (scene, opts) => alertOp(scene ?? canvas.scene, "lower", opts),
@@ -155,6 +175,7 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", () => {
   startClock();
+  startSpeech();
   refreshGlobalButton();
   Hooks.on("renderTokenHUD", onRenderTokenHUD);
   Hooks.on("canvasReady", () => { clearOverlay(); refreshGlobalButton(); });
