@@ -159,18 +159,33 @@ function ensureLayer() {
   return layer;
 }
 
-/** Draw the cones of the patrollers of this scene (GM always; players when the setting allows). */
+export const CONE_FOR_PLAYERS = { default: "As the module setting", show: "Players see it", hide: "Only the GM" };
+
+/**
+ * Does this player see the cone of this patroller? Only when the token itself is visible to them (never through fog or
+ * walls), it isn't invisible or hiding, and the token's choice (or the module setting) shares it.
+ */
+function playerSeesCone(td, p) {
+  if (td.hidden || !td.object?.visible) return false;
+  const st = td.actor?.statuses;
+  if (st?.has("invisible") || st?.has("hiding")) return false;
+  const choice = p.vision?.players ?? "default";
+  return choice === "default" ? setting("conesForPlayers") : choice === "show";
+}
+
+/** Draw the cones of the patrollers of this scene (GM always; players as allowed per token / by the setting). */
 export function drawCones() {
   if (!canvas.ready) return;
-  const visible = game.user.isGM || setting("conesForPlayers");
   const g = ensureLayer();
   g.clear();
-  if (!visible || !setting("showCones")) return;
+  if (!setting("showCones")) return;
+  const gm = game.user.isGM;
   const color = Number(foundry.utils.Color.from(setting("coneColor")));
   const alpha = Number(setting("coneOpacity"));
   for (const td of canvas.scene.tokens) {
     const p = getPatrol(td);
-    if (!watches(p) || !coneOf(td).enabled || td.hidden && !game.user.isGM) continue;
+    if (!watches(p) || !coneOf(td).enabled) continue;
+    if (!gm && !playerSeesCone(td, p)) continue;
     const spotted = p.status === "spotted";
     const S = sensesOf(td);
     if (!S.blind) {
@@ -201,6 +216,8 @@ export function registerVision() {
   Hooks.on("updateToken", (td, changes) => { if (foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) schedule(); });
   for (const h of ["createWall", "updateWall", "deleteWall", "lightingRefresh"]) Hooks.on(h, () => { clearCones(); schedule(); });
   Hooks.on("canvasReady", () => { clearCones(); layer = null; schedule(); });
+  // A player's sight changed (they moved, a door opened): cones appear and disappear with the tokens they see.
+  if (!game.user.isGM) Hooks.on("sightRefresh", schedule);
   Hooks.on("deleteToken", td => conePolys.delete(td.id));
   return schedule;
 }

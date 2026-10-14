@@ -210,7 +210,7 @@ Hooks.once("init", () => {
   Hooks.on("renderSceneControls", () => decorateTools());
   const choice = (key, name, hint, choices, def) => reg(key, { name, hint, type: String, choices, default: def });
   reg("showCones", { name: "Show vision cones", type: Boolean, default: true, onChange: () => drawCones() });
-  reg("conesForPlayers", { name: "Players see the cones", hint: "Off: only the GM sees them.", type: Boolean, default: false, onChange: () => drawCones() });
+  reg("conesForPlayers", { name: "Players see the cones", hint: "Default for every patroller (each one can override it). Players only see the cone of a token they can see.", type: Boolean, default: false, onChange: () => drawCones() });
   reg("coneColor", { name: "Cone color", type: new foundry.data.fields.ColorField({ initial: "#ff6b3d" }), default: "#ff6b3d", onChange: () => drawCones() });
   reg("coneOpacity", { name: "Cone opacity", type: Number, default: 0.15, range: { min: 0.02, max: 0.6, step: 0.01 }, onChange: () => drawCones() });
   reg("coneAngle", { name: "Default cone angle (degrees)", type: Number, default: 100, range: { min: 20, max: 360, step: 5 } });

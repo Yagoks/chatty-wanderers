@@ -38,6 +38,11 @@ The cone uses the patroller's senses (from its sheet, plus its token's darkvisio
 - An invisible target can still be noticed, with disadvantage. Disadvantage = −5 to passive Perception, or the roll is
   made with disadvantage; the card says why for each target.
 
+## Cones for players
+"Players see the cones" (module setting) is the default; each patroller can override it (route window → Vision →
+Players). A player only sees the cone of a token they can see themselves — never through fog or walls — and never while
+the patroller is invisible or hiding.
+
 ## Who is noticed
 - Player characters, by default.
 - Summons of the players follow a rule: Tiny/Small beasts blend in as local fauna (ignored), or always noticed, or
@@ -114,7 +119,7 @@ player's tokens are, quieter through walls and closed doors. Nothing to attach o
   slowly; drag its edge to change the distance. It also shows while you preview the sound.
 - Ready sounds: three synthesized footstep loops shipped with the module (light, heavy with claws, armored) and, if
   Sound FX Library is installed, its growls, moans and angry noises.
-- Hidden tokens are silent unless "Also while the token is hidden" is on.
+- Tokens hidden by the GM are silent; invisible or hiding creatures are still heard.
 - Mute one token for everyone from its HUD palette; mute all from the toolbar flyout. Each player can turn token sounds
   off for themselves in the module settings.
 - The GM hears from the selected token, or from the middle of the screen when nothing is selected.

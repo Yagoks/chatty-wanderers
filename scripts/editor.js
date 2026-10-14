@@ -4,7 +4,7 @@
 import { MODULE_ID, cellOf, centerOf, findPath } from "./pathing.js";
 import { getPatrol, getRoute, getRoutes, setStatus } from "./patrol.js";
 import { DETECT, ON_DISCOVER } from "./spotting.js";
-import { sensesOf } from "./vision.js";
+import { CONE_FOR_PLAYERS, sensesOf } from "./vision.js";
 import { ACTIONS, getReactions, hasReactions } from "./reactions.js";
 import { getConfig as getAlertConfig, getState as getAlertState } from "./alert.js";
 
@@ -194,7 +194,8 @@ export class RouteEditor extends ApplicationV2 {
         <label class="cw-check"><input type="checkbox" data-v="enabled" ${patrol.vision?.enabled !== false ? "checked" : ""}> Spots intruders</label>
         <label class="cw-field"><span>Angle (°)</span><input type="number" min="10" max="360" step="5" data-v="angle" value="${esc(patrol.vision?.angle ?? "")}" placeholder="${setting("coneAngle")}"></label>
         <label class="cw-field"><span>Range (ft)</span><input type="number" min="5" step="5" data-v="range" value="${esc(patrol.vision?.range ?? "")}" placeholder="${setting("coneRange")}"></label>
-        <p class="cw-hint">Senses (from the sheet): ${esc(senses)}. Light from the map and torches counts; dim light, darkvision in the dark and invisible targets give it disadvantage.</p>
+        <label class="cw-field"><span>Players</span><select data-vp="players">${opts(CONE_FOR_PLAYERS, patrol.vision?.players ?? "default")}</select></label>
+        <p class="cw-hint">Players only see the cone of a token they can see (not through fog or walls, not while it is invisible or hiding). Senses (from the sheet): ${esc(senses)}. Light from the map and torches counts; dim light, darkvision in the dark and invisible targets give it disadvantage.</p>
         <label class="cw-field"><span>Noticing</span><select data-sp="detect">${opts(DETECT, sp.detect)}</select></label>
         <label class="cw-field"><span>Discovering</span><select data-sp="onDiscover">${opts(ON_DISCOVER, sp.onDiscover)}</select></label>
       </fieldset>`;
@@ -248,6 +249,9 @@ export class RouteEditor extends ApplicationV2 {
     el.querySelectorAll("[data-v]").forEach(inp => inp.addEventListener("change", async () => {
       const value = inp.type === "checkbox" ? inp.checked : (inp.value === "" ? null : Number(inp.value));
       await this.td.update({ [`flags.${MODULE_ID}.patrol.vision.${inp.dataset.v}`]: value }, { [MODULE_ID]: true });
+    }));
+    el.querySelectorAll("[data-vp]").forEach(inp => inp.addEventListener("change", async () => {
+      await this.td.update({ [`flags.${MODULE_ID}.patrol.vision.${inp.dataset.vp}`]: inp.value }, { [MODULE_ID]: true });
     }));
     el.querySelectorAll("[data-sp]").forEach(inp => inp.addEventListener("change", async () => {
       await this.td.update({ [`flags.${MODULE_ID}.patrol.spotting.${inp.dataset.sp}`]: inp.value }, { [MODULE_ID]: true });

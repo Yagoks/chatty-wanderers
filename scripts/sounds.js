@@ -29,7 +29,7 @@ export const PRESETS = {
     src: [1, 2].map(n => `${FX}/Monsters/Angry Noises/angry-noises-${n}.mp3`).join(" | ") }
 };
 
-const DEFAULT_SOUNDS = { enabled: true, whileHidden: false, list: [] };
+const DEFAULT_SOUNDS = { enabled: true, list: [] };
 const DEFAULT_ENTRY = { src: "", mode: "moving", volume: 0.7, radius: 40, min: 20, max: 60, walls: "muffle", easing: true };
 const wallMode = e => (e.walls === true || e.walls === undefined ? "muffle" : e.walls === false ? "ignore" : e.walls);
 
@@ -122,7 +122,8 @@ function setMuffled(sound, slot, muffled) {
 
 function audible(td, cfg) {
   if (!cfg.enabled || isMuted(td) || setting("soundsMuted") || !setting("hearSounds")) return false;
-  if (td.hidden && !cfg.whileHidden) return false;
+  // Hidden by the GM = not there yet. Invisible or hiding creatures still make noise.
+  if (td.hidden) return false;
   return true;
 }
 
@@ -239,7 +240,7 @@ function gmTick() {
       if (!nextAt.has(key)) return nextAt.set(key, now + (min + Math.random() * (max - min)) * 1000);
       if (now < nextAt.get(key)) return;
       nextAt.set(key, now + (min + Math.random() * (max - min)) * 1000);
-      if (!cfg.enabled || isMuted(td) || (td.hidden && !cfg.whileHidden)) return;
+      if (!cfg.enabled || isMuted(td) || td.hidden) return;
       const src = resolveSrc(entry.src);
       if (!src) return;
       const msg = { type: "tokenSound", sceneId: scene.id, tokenId: td.id, index, src };
@@ -428,7 +429,7 @@ export class SoundsEditor extends ApplicationV2 {
         <span class="cw-hint">${this.actor.isToken ? "only this token" : "every token of this actor"}</span></p>
       <div class="cw-row">
         <label class="cw-check"><input type="checkbox" data-c="enabled" ${cfg.enabled ? "checked" : ""}> Makes sounds</label>
-        <label class="cw-check"><input type="checkbox" data-c="whileHidden" ${cfg.whileHidden ? "checked" : ""}> Also while the token is hidden</label>
+        <span class="cw-hint">Silent while hidden by the GM; invisible or hiding creatures are still heard.</span>
       </div>
       <div class="cw-sound-list">
         ${cfg.list.map((e, i) => `
