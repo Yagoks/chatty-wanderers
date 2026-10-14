@@ -29,6 +29,15 @@ Settings: clock (ms), global speed, show the route of a selected patroller.
 - A target is seen when it is inside the cone, lit or within the patroller's darkvision, and not invisible (truesight
   and blindsight see through invisibility).
 
+## Senses and light
+The cone uses the patroller's senses (from its sheet, plus its token's darkvision):
+- Eyes need light: bright light, dim light (disadvantage), or darkness within darkvision (disadvantage). Lights on the
+  map and torches/lanterns carried by tokens count. Blinded creatures, or "blind beyond…" in the senses, don't see.
+- Truesight sees invisible creatures within its range. Blindsight works all around without light but not through
+  walls; tremorsense works all around and through walls, only on creatures touching the ground. Both show as a thin ring.
+- An invisible target can still be noticed, with disadvantage. Disadvantage = −5 to passive Perception, or the roll is
+  made with disadvantage; the card says why for each target.
+
 ## Who is noticed
 - Player characters, by default.
 - Summons of the players follow a rule: Tiny/Small beasts blend in as local fauna (ignored), or always noticed, or
@@ -36,6 +45,12 @@ Settings: clock (ms), global speed, show the route of a selected patroller.
 - **Token HUD → eye button** on any token: automatic, always noticed, always ignored.
 
 ## When someone is spotted
+Per patroller (route window → Vision):
+- **Noticing:** ask me (card with Passive / Searching / False alarm buttons), passive Perception automatically, or a
+  Perception roll automatically — the automatic ones send the Stealth request to the players right away.
+- **Discovering:** stop and wait, or start combat (patroller + discovered creatures, NPC initiative rolled, combat
+  begun). The card also has a "Start combat" button.
+
 - The patroller stops and faces the target; the game can pause.
 - The GM gets a card: **Standing** (DC = passive Perception), **Searching** (roll Perception, DC = result), or
   **False alarm**.
@@ -92,7 +107,11 @@ player's tokens are, quieter through walls and closed doors. Nothing to attach o
 - Open from the **speaker icon** in the sheet's tab column or the module's palette in the Token HUD.
 - Several sounds at once, each with: the file (or several separated by `|`, one picked each time, or a Sequencer key),
   when it plays (**while it walks** — loop that fades in/out with the steps —, **always**, or **now and then** every
-  X–Y seconds, timed by the GM so everyone hears the same grunt), volume, how far it is heard (ft) and walls on/off.
+  X–Y seconds, timed by the GM so everyone hears the same grunt), volume, how far it is heard (ft), walls like an
+  Ambient Sound (muffled through walls — quieter and low-pass —, blocked by walls, or ignores walls) and whether it fades
+  with distance.
+- The target button shows the reach on the map in blue (bright = heard clearly, faint = only muffled), pulsing very
+  slowly; drag its edge to change the distance. It also shows while you preview the sound.
 - Ready sounds: three synthesized footstep loops shipped with the module (light, heavy with claws, armored) and, if
   Sound FX Library is installed, its growls, moans and angry noises.
 - Hidden tokens are silent unless "Also while the token is hidden" is on.
