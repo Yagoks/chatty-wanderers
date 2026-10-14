@@ -5,6 +5,7 @@
 
 import { MODULE_ID } from "./pathing.js";
 import { isActiveGM, setting } from "./patrol.js";
+import { SoundsEditor, hasSounds } from "./sounds.js";
 
 const SOCKET = `module.${MODULE_ID}`;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -382,6 +383,19 @@ function onRenderActorSheet(app, html) {
   });
   if (nav) nav.append(btn);
   else root.querySelector(".window-header .window-title")?.after(btn);
+
+  const sb = btn.cloneNode(false);
+  sb.className = btn.className.replace("cw-speech-tab", "cw-sounds-tab").replace("fa-comment-dots", "fa-volume-high").replace("cw-has-lines", "");
+  sb.dataset.tooltip = "Sounds (footsteps, grunts…)";
+  sb.setAttribute("aria-label", sb.dataset.tooltip);
+  if (nav) sb.innerHTML = `<i class="fa-solid fa-volume-high" inert></i>`;
+  if (hasSounds(actor)) sb.classList.add("cw-has-lines");
+  sb.addEventListener("click", ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    SoundsEditor.open(actor);
+  });
+  btn.after(sb);
 }
 
 /* -------------------------------------------- */

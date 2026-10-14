@@ -16,7 +16,7 @@ come next.
   out in a single update. Speed comes from the creature's walking speed, times a per-token and a global multiplier.
 - **Moving a patroller by hand:** while you hold it, it stays put. Dropped on one of its route points, it carries on from
   there; dropped anywhere else, it leaves the route and waits.
-- **Global pause:** a walker button in the **Token controls** on the left (GM, only on scenes with patrols).
+- **Global pause:** in the module's flyout (walker button in the **Token controls** on the left).
 - Patrols stop during combat and while the game is paused. They run on the scene the active GM is viewing.
 - Creatures can't share a square (dnd5e): a patroller waits for a blocker to move, then goes around.
 
@@ -44,7 +44,7 @@ Settings: clock (ms), global speed, show the route of a selected patroller.
   and an optional macro runs. Otherwise it carries on, and won't spot the same target again for a while.
 
 ## Scene alert
-- Enable it from **Scene Configuration → Alert of this scene…**; afterwards a bell button in the **Token controls** on the left opens it (orange above level 0).
+- Enable it from **Scene Configuration → Alert of this scene…**; afterwards the bell in the module's flyout (walker button in the Token controls, orange above level 0) opens it.
 - **Setup:** title, levels (name and what happens), minutes of game time before offering to lower, minimum after an
   intrusion, manual reasons, signals that can be switched off, bell sound (path or Sequencer key), the Ambient Sound it
   rings from (position, radius, easing, walls) and a tile that swings.
@@ -85,3 +85,25 @@ Lines over a token's head — never in the chat, and the camera never moves. Goo
 - Bubbles follow walking tokens. Hidden tokens and tokens a player can't see don't show bubbles to that player.
 - Settings: speech on/off, keep talking during combat, and (per player) show speech bubbles.
 - API: `game.modules.get("chatty-wanderers").api.say(token, text, { language, seconds })`, `api.openSpeech(actor)`.
+
+## Token sounds
+Footsteps, grunts, growls that come from the token itself — on the **Environment** channel, louder the closer each
+player's tokens are, quieter through walls and closed doors. Nothing to attach or detach.
+- Open from the **speaker icon** in the sheet's tab column or the module's palette in the Token HUD.
+- Several sounds at once, each with: the file (or several separated by `|`, one picked each time, or a Sequencer key),
+  when it plays (**while it walks** — loop that fades in/out with the steps —, **always**, or **now and then** every
+  X–Y seconds, timed by the GM so everyone hears the same grunt), volume, how far it is heard (ft) and walls on/off.
+- Ready sounds: three synthesized footstep loops shipped with the module (light, heavy with claws, armored) and, if
+  Sound FX Library is installed, its growls, moans and angry noises.
+- Hidden tokens are silent unless "Also while the token is hidden" is on.
+- Mute one token for everyone from its HUD palette; mute all from the toolbar flyout. Each player can turn token sounds
+  off for themselves in the module settings.
+- The GM hears from the selected token, or from the middle of the screen when nothing is selected.
+
+## Where the buttons are
+- **Token HUD:** one walker button; it opens a row beside it with route & reactions, who is noticed, speech, sounds and
+  mute.
+- **Left toolbar (Token controls):** one walker button; it opens a row with pause patrols, scene alert (with its level),
+  mute all token sounds and speech on/off. It turns orange while the alert is above 0 or something is paused/muted.
+
+The footstep sounds in `sounds/` were synthesized for this module and are free to use (CC0).

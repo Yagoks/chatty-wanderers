@@ -1,64 +1,120 @@
-// Chatty Wanderers — gives life to tokens. Stage 1: patrol routes.
+// Chatty Wanderers — gives life to tokens: patrols, vision, alert, speech and sounds.
 
 import { MODULE_ID, findPath, cellOf } from "./pathing.js";
 import { getPatrol, getRoutes, registerPatrol, resetRuntime, scenePatrollers, setStatus, setting, startClock, stopClock } from "./patrol.js";
 import { RouteEditor, clearOverlay, showSelectedRoute } from "./editor.js";
 import { drawCones, noticeClass, registerVision } from "./vision.js";
 import { registerSpotting } from "./spotting.js";
-import { SpeechEditor, registerSpeech, say, startSpeech, stopSpeech } from "./speech.js";
+import { SpeechEditor, getSpeech, registerSpeech, say, startSpeech, stopSpeech } from "./speech.js";
+import { SoundsEditor, hasSounds, isMuted, registerSounds, startSounds, stopSounds, toggleMute } from "./sounds.js";
 import { AlertPanel, alertOp, getConfig as getAlertConfig, getState as getAlertState, registerAlert } from "./alert.js";
 
 /* -------------------------------------------- */
-/*  Buttons in the Token controls (left)        */
+/*  Left toolbar: one button, a small flyout    */
 /* -------------------------------------------- */
 
-// The chat bar is already full (privacy, filters, export, clear): the buttons live with the Token tools instead.
+// The chat bar is already full (privacy, filters, export, clear): the module lives in the Token controls, behind a
+// single button that opens a row of buttons beside it.
 function onGetSceneControlButtons(controls) {
   if (!game.user.isGM) return;
   const tools = controls.tokens?.tools;
   if (!tools) return;
+  tools["cw-menu"] = {
+    name: "cw-menu", order: 90, button: true,
+    title: "Chatty Wanderers",
+    icon: "fa-solid fa-person-walking",
+    onChange: () => toggleMenu()
+  };
+}
+
+function menuButtons() {
   const scene = canvas?.scene;
+  const alert = scene ? getAlertConfig(scene) : null;
+  const level = alert?.enabled ? getAlertState(scene).level : null;
   const paused = setting("paused");
-  tools["cw-patrols"] = {
-    name: "cw-patrols", order: 90, button: true,
-    title: paused ? "Patrols paused — click to resume them" : "Patrols running — click to pause all of them",
-    icon: paused ? "fa-solid fa-person" : "fa-solid fa-person-walking",
-    visible: !!scene && scenePatrollers(scene).length > 0,
-    onChange: () => game.settings.set(MODULE_ID, "paused", !setting("paused"))
-  };
-  const alert = scene ? getAlertConfig(scene) : null;
-  tools["cw-alert"] = {
-    name: "cw-alert", order: 91, button: true,
-    title: alert?.enabled ? `${alert.title} of ${scene.name}: level ${getAlertState(scene).level}` : "Scene alert",
-    icon: "fa-solid fa-bell",
-    visible: !!alert?.enabled,
-    onChange: () => AlertPanel.open(canvas.scene)
-  };
+  const patrols = !!scene && scenePatrollers(scene).length > 0;
+  return [
+    { id: "patrols", icon: paused ? "fa-person" : "fa-person-walking", on: paused, hidden: !patrols,
+      tip: paused ? "Patrols paused — click to resume them" : "Patrols running — click to pause all of them",
+      run: () => game.settings.set(MODULE_ID, "paused", !paused) },
+    { id: "alert", icon: "fa-bell", on: level > 0, badge: level,
+      tip: alert?.enabled ? `${alert.title}: level ${level} — open` : "Scene alert — set one up",
+      run: () => AlertPanel.open(canvas.scene) },
+    { id: "sounds", icon: setting("soundsMuted") ? "fa-volume-xmark" : "fa-volume-high", on: setting("soundsMuted"),
+      tip: setting("soundsMuted") ? "Token sounds muted for everyone — click to turn them on" : "Token sounds on — click to mute them all",
+      run: () => game.settings.set(MODULE_ID, "soundsMuted", !setting("soundsMuted")) },
+    { id: "speech", icon: setting("speechEnabled") ? "fa-comment-dots" : "fa-comment-slash", on: !setting("speechEnabled"),
+      tip: setting("speechEnabled") ? "Speech bubbles on — click to silence them" : "Speech bubbles off — click to turn them on",
+      run: () => game.settings.set(MODULE_ID, "speechEnabled", !setting("speechEnabled")) }
+  ];
 }
 
-/** Color the bell by level and the walker when paused (the tool data has no place for it). */
+function closeMenu() {
+  document.getElementById("cw-menu")?.remove();
+  document.removeEventListener("pointerdown", onOutside, true);
+}
+
+function onOutside(ev) {
+  if (ev.target.closest?.("#cw-menu, [data-tool='cw-menu']")) return;
+  closeMenu();
+}
+
+let lastToggle = 0;
+function toggleMenu() {
+  // Foundry may report one click on a tool twice: ignore the echo.
+  if (Date.now() - lastToggle < 300) return;
+  lastToggle = Date.now();
+  if (document.getElementById("cw-menu")) return closeMenu();
+  const menu = document.createElement("div");
+  menu.id = "cw-menu";
+  menu.className = "cw-flyout";
+  document.body.append(menu);
+  renderMenu();
+  document.addEventListener("pointerdown", onOutside, true);
+}
+
+function renderMenu() {
+  const menu = document.getElementById("cw-menu");
+  if (!menu) return;
+  const anchor = document.querySelector('#scene-controls [data-tool="cw-menu"]');
+  if (!anchor) return closeMenu();
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${r.right + 6}px`;
+  menu.style.top = `${r.top}px`;
+  menu.replaceChildren(...menuButtons().filter(b => !b.hidden).map(b => {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = `ui-control icon fa-solid ${b.icon} ${b.on ? "cw-on" : ""}`;
+    el.dataset.tooltip = b.tip;
+    el.setAttribute("aria-label", b.tip);
+    if (b.badge !== null && b.badge !== undefined) el.dataset.badge = b.badge;
+    el.addEventListener("click", async () => { await b.run(); renderMenu(); });
+    return el;
+  }));
+}
+
+/** Color the toolbar button while something needs attention (alert above 0, patrols paused, sounds muted). */
 function decorateTools() {
-  const scene = canvas?.scene;
-  const bell = document.querySelector('#scene-controls [data-tool="cw-alert"]');
-  if (bell && scene) bell.dataset.level = getAlertState(scene).level;
-  document.querySelector('#scene-controls [data-tool="cw-patrols"]')?.classList.toggle("cw-paused", setting("paused"));
-}
-
-let toolsKey = null;
-function refreshGlobalButton() {
-  if (!game.user.isGM || !ui.controls?.rendered) return;
-  // Re-render the controls only when something they show changed (patrol steps update flags all the time).
+  const btn = document.querySelector('#scene-controls [data-tool="cw-menu"]');
+  if (!btn) return;
   const scene = canvas?.scene;
   const alert = scene ? getAlertConfig(scene) : null;
-  const key = [scene?.id, scene && scenePatrollers(scene).length > 0, setting("paused"), alert?.enabled, alert?.title, scene && getAlertState(scene).level].join("|");
-  if (key === toolsKey) return;
-  toolsKey = key;
-  ui.controls.render({ reset: true });
+  const level = alert?.enabled ? getAlertState(scene).level : 0;
+  btn.dataset.level = level;
+  btn.classList.toggle("cw-attention", level > 0 || setting("paused") || setting("soundsMuted"));
+}
+
+function refreshGlobalButton() {
+  if (!game.user.isGM) return;
+  decorateTools();
+  renderMenu();
 }
 
 /* -------------------------------------------- */
-/*  Token HUD                                   */
+/*  Token HUD: one button, a palette beside it  */
 /* -------------------------------------------- */
+
+let paletteOpen = false;
 
 function onRenderTokenHUD(hud, html) {
   if (!game.user.isGM) return;
@@ -66,46 +122,64 @@ function onRenderTokenHUD(hud, html) {
   const col = root?.querySelector(".col.right");
   if (!col || col.querySelector(".cw-hud")) return;
   const td = hud.object?.document;
+  if (!td) return;
   const patrol = getPatrol(td);
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = `control-icon cw-hud ${patrol?.status === "patrolling" ? "active" : ""}`;
-  btn.dataset.tooltip = "Patrol route";
-  btn.innerHTML = `<i class="fa-solid fa-route"></i>`;
-  btn.addEventListener("click", ev => {
-    ev.preventDefault();
-    RouteEditor.open(td);
-  });
-  col.append(btn);
+
+  const main = document.createElement("button");
+  main.type = "button";
+  main.className = `control-icon cw-hud ${paletteOpen ? "active" : ""}`;
+  main.dataset.tooltip = "Chatty Wanderers";
+  main.innerHTML = `<i class="fa-solid fa-person-walking"></i>`;
+  col.append(main);
+
+  const palette = document.createElement("div");
+  palette.className = `cw-palette ${paletteOpen ? "active" : ""}`;
+  const button = (icon, tip, cls, run) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `control-icon ${cls}`;
+    b.dataset.tooltip = tip;
+    b.innerHTML = `<i class="fa-solid ${icon}"></i>`;
+    b.addEventListener("click", ev => { ev.preventDefault(); ev.stopPropagation(); run(); });
+    palette.append(b);
+  };
+
+  button("fa-route", "Patrol route and alert reactions", patrol?.status === "patrolling" ? "active" : "", () => RouteEditor.open(td));
 
   // Who patrols notice: automatic (rules), always an intruder, or always ignored.
   const notice = foundry.utils.getProperty(td.flags ?? {}, `${MODULE_ID}.notice`) ?? "auto";
   const auto = noticeClass(td);
   const icons = { auto: auto === "intruder" ? "fa-eye" : "fa-eye-low-vision", intruder: "fa-eye", ignored: "fa-eye-slash" };
-  const labels = { auto: `Patrols: automatic (${auto})`, intruder: "Patrols: always noticed", ignored: "Patrols: always ignored" };
-  const nb = document.createElement("button");
-  nb.type = "button";
-  nb.className = `control-icon cw-notice cw-notice-${notice}`;
-  nb.dataset.tooltip = `${labels[notice]} — click to change`;
-  nb.innerHTML = `<i class="fa-solid ${icons[notice]}"></i>`;
-  nb.addEventListener("click", async ev => {
-    ev.preventDefault();
+  const labels = { auto: `Patrols notice it: automatic (${auto})`, intruder: "Patrols: always noticed", ignored: "Patrols: always ignored" };
+  button(icons[notice], `${labels[notice]} — click to change`, `cw-notice cw-notice-${notice}`, async () => {
     const next = { auto: "intruder", intruder: "ignored", ignored: "auto" }[notice];
     await td.update({ [`flags.${MODULE_ID}.notice`]: next === "auto" ? null : next });
     hud.render();
   });
-  col.append(nb);
 
-  const sb = document.createElement("button");
-  sb.type = "button";
-  sb.className = "control-icon cw-speech-hud";
-  sb.dataset.tooltip = "Speech bubbles";
-  sb.innerHTML = `<i class="fa-solid fa-comment-dots"></i>`;
-  sb.addEventListener("click", ev => {
+  const talks = td.actor && getSpeech(td.actor).lines.some(l => l.text?.trim());
+  button("fa-comment-dots", "Speech bubbles", talks ? "cw-has" : "", () => td.actor && SpeechEditor.open(td.actor));
+
+  const sounds = td.actor && hasSounds(td.actor);
+  button("fa-volume-high", "Sounds (footsteps, grunts…)", sounds ? "cw-has" : "", () => td.actor && SoundsEditor.open(td.actor));
+  if (sounds) {
+    const muted = isMuted(td);
+    button(muted ? "fa-volume-xmark" : "fa-volume-low", muted ? "Muted — click to hear it again" : "Mute this token (everyone)",
+      muted ? "active cw-muted" : "", async () => { await toggleMute(td); hud.render(); });
+  }
+  col.append(palette);
+
+  const place = () => {
+    palette.style.top = `${main.offsetTop}px`;
+  };
+  main.addEventListener("click", ev => {
     ev.preventDefault();
-    if (td.actor) SpeechEditor.open(td.actor);
+    paletteOpen = !paletteOpen;
+    palette.classList.toggle("active", paletteOpen);
+    main.classList.toggle("active", paletteOpen);
+    place();
   });
-  col.append(sb);
+  requestAnimationFrame(place);
 }
 
 /* -------------------------------------------- */
@@ -139,7 +213,11 @@ Hooks.once("init", () => {
   reg("stealthTimeout", { name: "Seconds players have to roll", type: Number, default: 30, range: { min: 10, max: 120, step: 5 } });
   reg("spotCooldown", { name: "Seconds before the same patroller can spot the same target again", type: Number, default: 30, range: { min: 5, max: 300, step: 5 } });
   reg("discoveredMacro", { name: "Macro when someone is discovered", hint: "Name of a macro to run (receives patroller, targets, scene). Leave empty for none.", type: String, default: "" });
-  reg("speechEnabled", { name: "Speech bubbles", hint: "Tokens say their lines (idle chatter, greetings, patrol events).", type: Boolean, default: true });
+  reg("speechEnabled", { name: "Speech bubbles", hint: "Tokens say their lines (idle chatter, greetings, patrol events).", type: Boolean, default: true, onChange: () => refreshGlobalButton() });
+  reg("soundsMuted", { name: "Token sounds muted", type: Boolean, default: false, config: false, onChange: () => refreshGlobalButton() });
+  game.settings.register(MODULE_ID, "hearSounds", {
+    name: "Hear token sounds", hint: "Footsteps and other sounds of tokens (Environment volume). Only for you.", scope: "client", config: true, type: Boolean, default: true
+  });
   reg("speechInCombat", { name: "Keep talking during combat", type: Boolean, default: false });
   game.settings.register(MODULE_ID, "showBubbles", {
     name: "Show speech bubbles", hint: "Only for you.", scope: "client", config: true, type: Boolean, default: true
@@ -154,12 +232,14 @@ Hooks.once("init", () => {
   registerVision();
   registerSpotting();
   registerSpeech();
+  registerSounds();
   game.modules.get(MODULE_ID).api = {
     openEditor: td => RouteEditor.open(td?.document ?? td),
     start: (td, index = 0) => setStatus(td?.document ?? td, "patrolling", { index }),
     stop: td => setStatus(td?.document ?? td, "stopped"),
     pauseAll: (paused = true) => game.settings.set(MODULE_ID, "paused", paused),
-    getRoutes, findPath, cellOf, stopClock: () => { stopClock(); stopSpeech(); },
+    getRoutes, findPath, cellOf, stopClock: () => { stopClock(); stopSpeech(); stopSounds(); },
+    openSounds: actor => SoundsEditor.open(actor?.actor ?? actor),
     say: (token, text, opts) => say(token, text, opts),
     openSpeech: actor => SpeechEditor.open(actor?.actor ?? actor),
     alert: {
@@ -176,6 +256,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   startClock();
   startSpeech();
+  startSounds();
   refreshGlobalButton();
   Hooks.on("renderTokenHUD", onRenderTokenHUD);
   Hooks.on("canvasReady", () => { clearOverlay(); refreshGlobalButton(); });
