@@ -16,7 +16,7 @@ come next.
   out in a single update. Speed comes from the creature's walking speed, times a per-token and a global multiplier.
 - **Moving a patroller by hand:** while you hold it, it stays put. Dropped on one of its route points, it carries on from
   there; dropped anywhere else, it leaves the route and waits.
-- **Global pause:** a button next to the chat controls (GM, only on scenes with patrols).
+- **Global pause:** a walker button in the **Token controls** on the left (GM, only on scenes with patrols).
 - Patrols stop during combat and while the game is paused. They run on the scene the active GM is viewing.
 - Creatures can't share a square (dnd5e): a patroller waits for a blocker to move, then goes around.
 
@@ -44,12 +44,28 @@ Settings: clock (ms), global speed, show the route of a selected patroller.
   and an optional macro runs. Otherwise it carries on, and won't spot the same target again for a while.
 
 ## Scene alert
-- Enable it from **Scene Configuration → Alert of this scene…**; afterwards a bell button next to the chat opens it.
+- Enable it from **Scene Configuration → Alert of this scene…**; afterwards a bell button in the **Token controls** on the left opens it (orange above level 0).
 - **Setup:** title, levels (name and what happens), minutes of game time before offering to lower, minimum after an
   intrusion, manual reasons, signals that can be switched off, bell sound (path or Sequencer key), the Ambient Sound it
   rings from (position, radius, easing, walls) and a tile that swings.
-- **Status:** current level, what each level means, +1 / −1 / reset, signals and history.
+- **Status:** current level, what each level means, +1 / −1 / reset, +1 at a point you click (where the noise was),
+  who is reacting and how, signals and history.
 - A patrol that discovers someone raises it (optional). Each raise rings the bell and whispers the GM the new level.
 - After a quiet stretch of game time the GM gets a "Lower the alert" button; never below the minimum after an intrusion.
 - API for traps, puzzles and macros: `game.modules.get("chatty-wanderers").api.alert.raise(scene, { source, reason })`,
-  plus `lower`, `set`, `get`, `config`, `open`. Hook: `chatty-wanderers.alertChanged`.
+  plus `lower`, `set`, `get`, `config`, `open`. Pass `origin` (a tile, token or `{x, y}`) so investigators know where
+  to go. Hook: `chatty-wanderers.alertChanged` (scene, level, before, reason, opts).
+
+## Reactions to the alert
+In the token's window (Token HUD → route button), **On alert** lists the levels of the scene. For each one:
+- **Usual behavior:** walks back to where it was and carries on (its route or its post).
+- **Patrol another route:** joins the route at its closest point.
+- **Go to a point:** set the point on the map; it stays there, or hides when it arrives (someone leaving the place).
+- **Investigate the alarm:** walks to where the alarm came from (the `origin` of the raise, the point clicked on the
+  panel, the spot of a discovered intruder, else the bell), looks around for some seconds and goes back.
+- **Stop where it is.**
+- Optional speed × for the reaction. A level left empty keeps the reaction of the level below.
+
+Before its first reaction the token's usual state is saved; when the alert drops to a level without a reaction it walks
+back and resumes. Points to go to show as red diamonds (A1, A2…) while the token is selected. Moving a reacting token
+by hand makes it stay there. Tokens holding a post or following the alert also keep watch with their vision cone.

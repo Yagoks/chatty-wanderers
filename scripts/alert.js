@@ -5,6 +5,7 @@
 // Config and state live on the scene: flags.chatty-wanderers.alert = { config, state }.
 
 import { MODULE_ID } from "./pathing.js";
+import { ACTIONS, applyReactions, effectiveReaction, hasReactions, originPoint } from "./reactions.js";
 
 const SOCKET = `module.${MODULE_ID}`;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -87,7 +88,8 @@ async function apply(sceneId, op, opts = {}) {
       if (opts.bell !== false) ringBell(scene.id);
       await gmWhisper(`<p><i class="fa-solid fa-bell"></i> <b>${esc(c.title)}</b>: ${before} → <b>${s.level}</b>${s.lastReason ? ` <em>(${esc(s.lastReason)})</em>` : ""}</p>
         <p>${s.level !== before ? levelLine(c, s.level) : "Already at the highest level."}</p>`, c.title);
-      Hooks.callAll(`${MODULE_ID}.alertChanged`, scene, s.level, before, s.lastReason);
+      await applyReactions(scene, s.level, opts, c);
+      Hooks.callAll(`${MODULE_ID}.alertChanged`, scene, s.level, before, s.lastReason, opts);
       return { ok: true, level: s.level };
     }
     case "lower": {
@@ -101,7 +103,8 @@ async function apply(sceneId, op, opts = {}) {
       entry(before, s.level, opts.reason ?? "Quiet for a while");
       await saveState(scene, s);
       await gmWhisper(`<p><b>${esc(c.title)}</b>: ${before} → <b>${s.level}</b></p><p>${levelLine(c, s.level)}</p>`, c.title);
-      Hooks.callAll(`${MODULE_ID}.alertChanged`, scene, s.level, before, opts.reason ?? "");
+      await applyReactions(scene, s.level, opts, c);
+      Hooks.callAll(`${MODULE_ID}.alertChanged`, scene, s.level, before, opts.reason ?? "", opts);
       return { ok: true, level: s.level };
     }
     case "set": {
@@ -112,8 +115,13 @@ async function apply(sceneId, op, opts = {}) {
       if (level) Object.assign(next, { level, intruded: true, lastSignal: now });
       next.log = [{ t: now, from: before, to: level, reason: opts.reason ?? "Set by the GM" }, ...s.log].slice(0, 25);
       await saveState(scene, next);
-      Hooks.callAll(`${MODULE_ID}.alertChanged`, scene, level, before, opts.reason ?? "");
+      await applyReactions(scene, level, opts, c);
+      Hooks.callAll(`${MODULE_ID}.alertChanged`, scene, level, before, opts.reason ?? "", opts);
       return { ok: true, level };
+    }
+    case "react": {
+      const n = await applyReactions(scene, s.level, { force: true }, c);
+      return { ok: true, count: n };
     }
     case "toggle": {
       s.disabled[opts.source] = !s.disabled[opts.source];
@@ -128,6 +136,8 @@ async function apply(sceneId, op, opts = {}) {
 export function alertOp(scene, op, opts = {}) {
   const id = sceneOf(scene)?.id;
   if (!id) return Promise.resolve({ ok: false, msg: "No scene." });
+  // Documents don't travel over the socket: keep only the point.
+  if (opts.origin) opts = { ...opts, origin: originPoint(opts.origin) };
   if (isActiveGM()) return apply(id, op, opts);
   game.socket.emit(SOCKET, { type: "alert", sceneId: id, op, opts });
   return Promise.resolve({ ok: true, sent: true });
@@ -220,6 +230,29 @@ function swingTile(tile) {
 /*  GM panel                                    */
 /* -------------------------------------------- */
 
+/** Wait for one click on the canvas; resolves to the point (or null on right click / Escape). */
+export function pickPoint() {
+  return new Promise(resolve => {
+    const board = canvas.app.view.parentElement;
+    const done = (ev, point) => {
+      ev?.stopPropagation(); ev?.preventDefault();
+      board.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("keydown", onKey, true);
+      resolve(point);
+    };
+    const onDown = ev => {
+      if (ev.target !== canvas.app.view) return;
+      if (ev.button === 2) return done(ev, null);
+      if (ev.button !== 0) return;
+      const p = canvas.canvasCoordinatesFromClient({ x: ev.clientX, y: ev.clientY });
+      done(ev, { x: Math.round(p.x), y: Math.round(p.y) });
+    };
+    const onKey = ev => { if (ev.key === "Escape") done(ev, null); };
+    board.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("keydown", onKey, true);
+  });
+}
+
 const { ApplicationV2 } = foundry.applications.api;
 
 export class AlertPanel extends ApplicationV2 {
@@ -273,12 +306,27 @@ export class AlertPanel extends ApplicationV2 {
       <div class="cw-alert-buttons">
         <select class="cw-reason">${c.manual.map(r => `<option>${esc(r)}</option>`).join("")}</select>
         <button type="button" data-do="raise"><i class="fa-solid fa-arrow-up"></i> +1</button>
+        <button type="button" data-do="raiseAt" data-tooltip="+1, then click where the noise happened (who investigates goes there)"><i class="fa-solid fa-location-crosshairs"></i></button>
         <button type="button" data-do="lower" ${s.level <= floor ? "disabled" : ""}><i class="fa-solid fa-arrow-down"></i> −1</button>
         <button type="button" data-do="reset" data-tooltip="Back to 0"><i class="fa-solid fa-rotate-left"></i></button>
       </div>
       <ol class="cw-levels" start="0">${levels}</ol>
+      ${this._reactingHTML(s)}
       ${sources ? `<h4>Signals</h4><div class="cw-sources">${sources}</div>` : ""}
       ${log ? `<h4>History</h4><ul class="cw-log">${log}</ul>` : ""}`;
+  }
+
+  _reactingHTML(s) {
+    const tokens = this.scene.tokens.filter(t => hasReactions(t));
+    if (!tokens.length) return "";
+    const what = { moving: "on the way", holding: "holding", patrolling: "patrolling", stopped: "at its post", detached: "moved by the GM", spotted: "spotted someone", alerted: "alerted" };
+    const rows = tokens.map(t => {
+      const eff = effectiveReaction(t, s.level);
+      const p = foundry.utils.getProperty(t.flags, `${MODULE_ID}.patrol`) ?? {};
+      const doing = eff.level ? ACTIONS[eff.action] : "usual behavior";
+      return `<li><b>${esc(t.name)}</b>: ${esc(doing)} <em>(${esc(what[p.status] ?? p.status ?? "at its post")})</em></li>`;
+    }).join("");
+    return `<h4>Reactions <button type="button" class="cw-mini" data-do="react" data-tooltip="Send everyone to the reaction of this level again"><i class="fa-solid fa-rotate"></i></button></h4><ul class="cw-log">${rows}</ul>`;
   }
 
   _setupHTML(c) {
@@ -346,6 +394,14 @@ export class AlertPanel extends ApplicationV2 {
           break;
         }
         case "raise": await alertOp(this.scene, "raise", { reason: reason() }); break;
+        case "raiseAt": {
+          if (canvas.scene !== this.scene) return ui.notifications.warn("View this scene first.");
+          ui.notifications.info("Click on the map where the noise happened (right click cancels).");
+          const point = await pickPoint();
+          if (point) await alertOp(this.scene, "raise", { reason: reason(), origin: point });
+          break;
+        }
+        case "react": await alertOp(this.scene, "react"); break;
         case "lower": await alertOp(this.scene, "lower", { reason: "Lowered by the GM" }); break;
         case "reset": await alertOp(this.scene, "set", { level: 0, reason: "Reset by the GM" }); break;
         case "addLevel": { const c = this._readSetup(); c.levels.push({ name: `Level ${c.levels.length}`, text: "" }); await saveConfig(this.scene, c); break; }
@@ -401,6 +457,6 @@ export function registerAlert() {
     const scene = patroller.parent;
     const c = getConfig(scene);
     if (!c.enabled || !c.raiseOnDiscovered) return;
-    alertOp(scene, "raise", { reason: `${patroller.name} discovered ${targets.map(t => t.name).join(", ")}` });
+    alertOp(scene, "raise", { reason: `${patroller.name} discovered ${targets.map(t => t.name).join(", ")}`, origin: targets[0] });
   });
 }

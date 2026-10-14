@@ -8,53 +8,51 @@ import { registerSpotting } from "./spotting.js";
 import { AlertPanel, alertOp, getConfig as getAlertConfig, getState as getAlertState, registerAlert } from "./alert.js";
 
 /* -------------------------------------------- */
-/*  Global pause button (next to the chat)      */
+/*  Buttons in the Token controls (left)        */
 /* -------------------------------------------- */
 
-function refreshAlertButton() {
-  const host = document.querySelector("#chat-controls .control-buttons");
-  let btn = document.getElementById("cw-alert-btn");
-  const scene = canvas.scene;
-  const show = game.user.isGM && scene && getAlertConfig(scene).enabled;
-  if (!show) return btn?.remove();
-  if (!host) return;
-  if (!btn) {
-    btn = document.createElement("button");
-    btn.type = "button";
-    btn.id = "cw-alert-btn";
-    btn.className = "ui-control icon fa-solid fa-bell";
-    btn.addEventListener("click", () => AlertPanel.open(canvas.scene));
-    host.prepend(btn);
-  }
-  const level = getAlertState(scene).level;
-  btn.dataset.tooltip = `Alert of ${scene.name}: level ${level}`;
-  btn.dataset.level = level;
+// The chat bar is already full (privacy, filters, export, clear): the buttons live with the Token tools instead.
+function onGetSceneControlButtons(controls) {
+  if (!game.user.isGM) return;
+  const tools = controls.tokens?.tools;
+  if (!tools) return;
+  const scene = canvas?.scene;
+  const paused = setting("paused");
+  tools["cw-patrols"] = {
+    name: "cw-patrols", order: 90, button: true,
+    title: paused ? "Patrols paused — click to resume them" : "Patrols running — click to pause all of them",
+    icon: paused ? "fa-solid fa-person" : "fa-solid fa-person-walking",
+    visible: !!scene && scenePatrollers(scene).length > 0,
+    onChange: () => game.settings.set(MODULE_ID, "paused", !setting("paused"))
+  };
+  const alert = scene ? getAlertConfig(scene) : null;
+  tools["cw-alert"] = {
+    name: "cw-alert", order: 91, button: true,
+    title: alert?.enabled ? `${alert.title} of ${scene.name}: level ${getAlertState(scene).level}` : "Scene alert",
+    icon: "fa-solid fa-bell",
+    visible: !!alert?.enabled,
+    onChange: () => AlertPanel.open(canvas.scene)
+  };
 }
 
+/** Color the bell by level and the walker when paused (the tool data has no place for it). */
+function decorateTools() {
+  const scene = canvas?.scene;
+  const bell = document.querySelector('#scene-controls [data-tool="cw-alert"]');
+  if (bell && scene) bell.dataset.level = getAlertState(scene).level;
+  document.querySelector('#scene-controls [data-tool="cw-patrols"]')?.classList.toggle("cw-paused", setting("paused"));
+}
+
+let toolsKey = null;
 function refreshGlobalButton() {
-  refreshAlertButton();
-  const host = document.querySelector("#chat-controls .control-buttons");
-  let btn = document.getElementById("cw-global");
-  const show = game.user.isGM && scenePatrollers().length > 0;
-  if (!show) return btn?.remove();
-  if (!host) return;
-  if (!btn) {
-    btn = document.createElement("button");
-    btn.type = "button";
-    btn.id = "cw-global";
-    btn.className = "ui-control icon fa-solid fa-person-walking";
-    btn.addEventListener("click", async () => {
-      await game.settings.set(MODULE_ID, "paused", !setting("paused"));
-      refreshGlobalButton();
-    });
-    host.prepend(btn);
-  }
-  const paused = setting("paused");
-  btn.classList.toggle("cw-paused", paused);
-  btn.classList.toggle("fa-person-walking", !paused);
-  btn.classList.toggle("fa-person", paused);
-  btn.dataset.tooltip = paused ? "Patrols paused — click to resume them" : "Patrols running — click to pause all of them";
-  btn.setAttribute("aria-label", btn.dataset.tooltip);
+  if (!game.user.isGM || !ui.controls?.rendered) return;
+  // Re-render the controls only when something they show changed (patrol steps update flags all the time).
+  const scene = canvas?.scene;
+  const alert = scene ? getAlertConfig(scene) : null;
+  const key = [scene?.id, scene && scenePatrollers(scene).length > 0, setting("paused"), alert?.enabled, alert?.title, scene && getAlertState(scene).level].join("|");
+  if (key === toolsKey) return;
+  toolsKey = key;
+  ui.controls.render({ reset: true });
 }
 
 /* -------------------------------------------- */
@@ -110,6 +108,8 @@ Hooks.once("init", () => {
   });
   reg("speed", { name: "Global speed ×", hint: "Multiplies every patroller's speed.", type: Number, default: 1, range: { min: 0.25, max: 3, step: 0.25 } });
   reg("paused", { name: "Patrols paused", type: Boolean, default: false, config: false, onChange: () => refreshGlobalButton() });
+  Hooks.on("getSceneControlButtons", onGetSceneControlButtons);
+  Hooks.on("renderSceneControls", () => decorateTools());
   const choice = (key, name, hint, choices, def) => reg(key, { name, hint, type: String, choices, default: def });
   reg("showCones", { name: "Show vision cones", type: Boolean, default: true, onChange: () => drawCones() });
   reg("conesForPlayers", { name: "Players see the cones", hint: "Off: only the GM sees them.", type: Boolean, default: false, onChange: () => drawCones() });
@@ -157,7 +157,6 @@ Hooks.once("ready", () => {
   startClock();
   refreshGlobalButton();
   Hooks.on("renderTokenHUD", onRenderTokenHUD);
-  Hooks.on("renderChatLog", () => refreshGlobalButton());
   Hooks.on("canvasReady", () => { clearOverlay(); refreshGlobalButton(); });
   Hooks.on("controlToken", () => setTimeout(showSelectedRoute, 0));
   Hooks.on("updateToken", (td, changes) => {
@@ -180,7 +179,7 @@ Hooks.once("ready", () => {
     tab.append(div);
   });
   Hooks.on("updateScene", (scene, changes) => {
-    if (scene === canvas.scene && foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) refreshAlertButton();
+    if (scene === canvas.scene && foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) refreshGlobalButton();
     if (scene === canvas.scene && foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) {
       resetRuntime();
       showSelectedRoute();

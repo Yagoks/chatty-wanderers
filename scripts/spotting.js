@@ -4,7 +4,7 @@
 // (each player from their own client, through Epic Rolls, or by the GM). Anyone who fails is discovered.
 
 import { MODULE_ID, tokenCenter } from "./pathing.js";
-import { getPatrol, isActiveGM, resetRuntime, setting } from "./patrol.js";
+import { getPatrol, isActiveGM, resetRuntime, setting, watches } from "./patrol.js";
 import { noticeClass, sees } from "./vision.js";
 
 const SOCKET = `module.${MODULE_ID}`;
@@ -24,7 +24,7 @@ export async function checkSpotting(scene) {
   if (!intruders.length) return;
   for (const td of scene.tokens) {
     const p = getPatrol(td);
-    if (!p?.route || p.status === "spotted" || p.status === "alerted" || p.vision?.enabled === false) continue;
+    if (!watches(p) || td.hidden || p.status === "spotted" || p.status === "alerted" || p.vision?.enabled === false) continue;
     const seen = intruders.filter(t => t.id !== td.id && (cooldown.get(`${td.id}:${t.id}`) ?? 0) < now && sees(td, t));
     if (seen.length) await spot(td, seen);
   }

@@ -3,6 +3,8 @@
 
 import { MODULE_ID, cellOf, centerOf, findPath } from "./pathing.js";
 import { getPatrol, getRoute, getRoutes, setStatus } from "./patrol.js";
+import { ACTIONS, getReactions, hasReactions } from "./reactions.js";
+import { getConfig as getAlertConfig, getState as getAlertState } from "./alert.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -73,6 +75,26 @@ export function drawRoute(route, { strong = true, drag = null } = {}) {
   });
 }
 
+/** Where a token goes at each alert level ("Go to a point"): a diamond with the level number. */
+export function drawReactionPoints(td) {
+  const reactions = getReactions(td);
+  const marks = Object.entries(reactions).filter(([, r]) => r?.action === "goto" && r.point);
+  if (!marks.length) return;
+  const layer = ensureOverlay();
+  const size = canvas.grid.size;
+  for (const [level, r] of marks) {
+    const { x, y } = r.point;
+    const s = size * 0.26;
+    const g = new PIXI.Graphics();
+    g.lineStyle(size * 0.04, 0x000000, 0.8).beginFill(0xe85a4a, 0.9).drawPolygon([x, y - s, x + s, y, x, y + s, x - s, y]).endFill();
+    layer.addChild(g);
+    const label = new PIXI.Text(`A${level}`, { fontFamily: "Signika", fontSize: size * 0.2, fontWeight: "bold", fill: 0xffffff });
+    label.anchor.set(0.5);
+    label.position.set(x, y);
+    layer.addChild(label);
+  }
+}
+
 /* -------------------------------------------- */
 /*  Editor window                               */
 /* -------------------------------------------- */
@@ -83,7 +105,7 @@ export class RouteEditor extends ApplicationV2 {
   static DEFAULT_OPTIONS = {
     classes: ["cw-editor"],
     window: { title: "Patrol route", icon: "fa-solid fa-route", resizable: true },
-    position: { width: 380, height: "auto", top: 80, left: 120 }
+    position: { width: 420, height: "auto", top: 80, left: 120 }
   };
 
   static open(td) {
@@ -98,6 +120,7 @@ export class RouteEditor extends ApplicationV2 {
     super({ id: "chatty-wanderers-editor" });
     this.td = td;
     this.adding = false;
+    this.picking = null;
     this.drag = null;
     this._onPointerDown = this._onPointerDown.bind(this);
     this._onPointerMove = this._onPointerMove.bind(this);
@@ -118,7 +141,8 @@ export class RouteEditor extends ApplicationV2 {
     const route = this.route;
     const patrol = this.patrol;
     const status = patrol.status ?? "stopped";
-    const statusLabel = { patrolling: "Patrolling", stopped: "Stopped", detached: "Off its route (stopped)", spotted: "Spotted someone", alerted: "Alerted" }[status] ?? status;
+    const statusLabel = { patrolling: "Patrolling", stopped: "Stopped", detached: "Off its route (stopped)", spotted: "Spotted someone", alerted: "Alerted",
+      moving: "Following the alert", holding: "Holding position" }[status] ?? status;
     const opts = (map, cur) => Object.entries(map).map(([k, v]) => `<option value="${k}" ${k === cur ? "selected" : ""}>${esc(v)}</option>`).join("");
     const root = document.createElement("div");
     root.className = "cw-root";
@@ -157,8 +181,38 @@ export class RouteEditor extends ApplicationV2 {
         ${status === "patrolling"
           ? `<button type="button" data-do="stop"><i class="fa-solid fa-pause"></i> Stop</button>`
           : `<button type="button" data-do="start" ${route.points.length ? "" : "disabled"}><i class="fa-solid fa-play"></i> Start from point 1</button>`}
-      </div>` : `<p class="cw-hint">Pick a route of this scene or create a new one.</p>`}`;
+      </div>` : `<p class="cw-hint">Pick a route of this scene or create a new one.</p>`}
+      ${this._reactionsHTML(routes)}`;
     return root;
+  }
+
+  /** What this token does at each alert level of the scene. */
+  _reactionsHTML(routes) {
+    const c = getAlertConfig(this.scene);
+    if (!c.enabled) return `<p class="cw-hint">Reactions to the alert: enable an alert for this scene (Scene configuration).</p>`;
+    const reactions = getReactions(this.td);
+    const level = getAlertState(this.scene).level;
+    const patrol = this.patrol;
+    const opt = (map, cur) => Object.entries(map).map(([k, v]) => `<option value="${k}" ${k === (cur ?? "") ? "selected" : ""}>${esc(v)}</option>`).join("");
+    const rows = c.levels.slice(1).map((l, i) => {
+      const n = i + 1;
+      const r = reactions[n] ?? {};
+      const a = r.action ?? "";
+      let extra = "";
+      if (a === "route") extra = `<select data-react="${n}" data-k="route"><option value="">— route —</option>${Object.values(routes).map(x => `<option value="${x.id}" ${x.id === r.route ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`;
+      if (a === "goto") extra = `<button type="button" data-pick="${n}" class="${this.picking === n ? "active" : ""}"><i class="fa-solid fa-location-dot"></i> ${this.picking === n ? "Click the map…" : r.point ? "Move the point" : "Set the point"}</button>
+        <select data-react="${n}" data-k="then">${opt({ stay: "and stays there", hide: "and hides (leaves)" }, r.then ?? "stay")}</select>`;
+      if (a === "investigate") extra = `<label>looks around <input type="number" min="0" step="5" data-react="${n}" data-k="wait" value="${esc(r.wait ?? 30)}"> s, then goes back</label>`;
+      const speed = a && a !== "normal" && a !== "hold" ? `<label>speed × <input type="number" min="0.1" step="0.1" data-react="${n}" data-k="speed" value="${esc(r.speed ?? "")}" placeholder="1"></label>` : "";
+      return `<div class="cw-react-row ${n === level ? "current" : ""}">
+        <span class="cw-react-lvl">${n} — ${esc(l.name)}</span>
+        <select data-react="${n}" data-k="action">${opt(ACTIONS, a)}</select>
+        ${extra || speed ? `<div class="cw-react-extra">${extra}${speed}</div>` : ""}</div>`;
+    }).join("");
+    const following = patrol.home ? `<div class="cw-row"><span class="cw-hint">Following the alert (level ${patrol.react ?? "?"}).</span>
+      <button type="button" data-do="goHome"><i class="fa-solid fa-house"></i> Back to usual now</button></div>` : "";
+    return `<fieldset class="cw-vision cw-reactions"><legend>On alert — ${esc(c.title)} (now ${level})</legend>${rows}${following}
+      <p class="cw-hint">A level left empty keeps the reaction of the level below. When the alert drops, the token walks back and carries on.</p></fieldset>`;
   }
 
   _replaceHTML(result, content) {
@@ -188,8 +242,25 @@ export class RouteEditor extends ApplicationV2 {
       this.render();
     }));
     el.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => this._removePoint(Number(b.dataset.del))));
+    el.querySelectorAll("[data-react]").forEach(inp => inp.addEventListener("change", async () => {
+      const k = inp.dataset.k;
+      let value = inp.value;
+      if (k === "wait" || k === "speed") value = value === "" ? null : Number(value);
+      const key = `flags.${MODULE_ID}.reactions.${inp.dataset.react}`;
+      if (k === "action" && !value) await this.td.update({ [`flags.${MODULE_ID}.reactions.-=${inp.dataset.react}`]: null });
+      else await this.td.update({ [`${key}.${k}`]: value });
+      if (k === "action" && value === "goto" && !getReactions(this.td)[inp.dataset.react]?.point) this.picking = Number(inp.dataset.react);
+      this.render();
+    }));
+    el.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", () => {
+      const n = Number(b.dataset.pick);
+      this.picking = this.picking === n ? null : n;
+      this.adding = false;
+      this.render();
+    }));
     el.querySelectorAll("[data-do]").forEach(b => b.addEventListener("click", () => this._do(b.dataset.do)));
     drawRoute(this.route);
+    drawReactionPoints(this.td);
   }
 
   async _do(action) {
@@ -211,7 +282,13 @@ export class RouteEditor extends ApplicationV2 {
         for (const t of this.scene.tokens) if (getPatrol(t)?.route === route.id) await t.update({ [`flags.${MODULE_ID}.patrol.route`]: null, [`flags.${MODULE_ID}.patrol.status`]: "stopped" }, { [MODULE_ID]: true });
         break;
       }
-      case "add": this.adding = !this.adding; break;
+      case "add": this.adding = !this.adding; this.picking = null; break;
+      case "goHome": {
+        const home = this.patrol.home;
+        if (home) await this.td.update({ [`flags.${MODULE_ID}.patrol.goal`]: { x: home.x, y: home.y, then: "home" }, [`flags.${MODULE_ID}.patrol.status`]: "moving",
+          [`flags.${MODULE_ID}.patrol.react`]: 0 }, { [MODULE_ID]: true });
+        break;
+      }
       case "start": await setStatus(this.td, "patrolling", { index: 0, dir: 1 }); break;
       case "stop": await setStatus(this.td, "stopped"); break;
     }
@@ -245,7 +322,15 @@ export class RouteEditor extends ApplicationV2 {
   }
 
   _onPointerDown(ev) {
-    if (!this.route || ev.target !== canvas.app.view) return;
+    if (ev.target !== canvas.app.view) return;
+    if (this.picking !== null && ev.button === 0) {
+      ev.stopPropagation(); ev.preventDefault();
+      const n = this.picking;
+      this.picking = null;
+      this.td.update({ [`flags.${MODULE_ID}.reactions.${n}.point`]: this._snapped(this._worldPoint(ev)) }).then(() => this.render());
+      return;
+    }
+    if (!this.route) return;
     const i = this._pointAt(ev);
     if (ev.button === 2 && i !== null) {
       ev.stopPropagation(); ev.preventDefault();
@@ -305,9 +390,12 @@ export class RouteEditor extends ApplicationV2 {
 /** While no editor is open, show the route of a selected patroller (faint) to the GM. */
 export function showSelectedRoute() {
   if (!game.user.isGM || RouteEditor.current) return;
-  const td = canvas.tokens.controlled.map(t => t.document).find(d => getPatrol(d)?.route);
+  const td = canvas.tokens.controlled.map(t => t.document).find(d => getPatrol(d)?.route || hasReactions(d));
   if (!td || !setting("showSelected")) return clearOverlay();
-  drawRoute(getRoute(td.parent, getPatrol(td).route), { strong: false });
+  const route = getPatrol(td)?.route;
+  if (route) drawRoute(getRoute(td.parent, route), { strong: false });
+  else clearOverlay();
+  drawReactionPoints(td);
 }
 
 const setting = key => game.settings.get(MODULE_ID, key);

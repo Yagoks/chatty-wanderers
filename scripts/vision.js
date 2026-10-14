@@ -4,7 +4,7 @@
 // darkvision. Only "intruders" count: player characters by default, with per-token overrides and a rule for summons.
 
 import { MODULE_ID, tokenCenter } from "./pathing.js";
-import { getPatrol, setting } from "./patrol.js";
+import { getPatrol, setting, watches } from "./patrol.js";
 
 const conePolys = new Map(); // token id -> {key, poly}
 let layer = null;
@@ -127,7 +127,7 @@ export function drawCones() {
   const alpha = Number(setting("coneOpacity"));
   for (const td of canvas.scene.tokens) {
     const p = getPatrol(td);
-    if (!p?.route || !coneOf(td).enabled || td.hidden && !game.user.isGM) continue;
+    if (!watches(p) || !coneOf(td).enabled || td.hidden && !game.user.isGM) continue;
     const poly = conePolygon(td);
     const spotted = p.status === "spotted";
     g.lineStyle(2, spotted ? 0xff2020 : color, Math.min(1, alpha * 3));
@@ -144,7 +144,7 @@ export function registerVision() {
     pending = true;
     requestAnimationFrame(() => { pending = false; drawCones(); });
   };
-  Hooks.on("refreshToken", token => { if (getPatrol(token.document)?.route) schedule(); });
+  Hooks.on("refreshToken", token => { if (watches(getPatrol(token.document))) schedule(); });
   Hooks.on("updateToken", (td, changes) => { if (foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) schedule(); });
   for (const h of ["createWall", "updateWall", "deleteWall", "lightingRefresh"]) Hooks.on(h, () => { clearCones(); schedule(); });
   Hooks.on("canvasReady", () => { clearCones(); layer = null; schedule(); });

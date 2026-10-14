@@ -3,6 +3,7 @@
 // steps go out in a single update. Slower creatures simply step on fewer ticks.
 
 import { checkSpotting } from "./spotting.js";
+import { arrivalUpdate, hasReactions, leaveHiding } from "./reactions.js";
 import { MODULE_ID, cellKey, cellOf, centerOf, clearPathCache, findPath, sameCell, stepInfo, tokenCenter, tokenPositionFor } from "./pathing.js";
 
 /** Per-token runtime state (memory only). */
@@ -29,8 +30,11 @@ export function getPatrol(td) {
 }
 
 export function scenePatrollers(scene = canvas.scene) {
-  return scene?.tokens.filter(t => getPatrol(t)?.route) ?? [];
+  return scene?.tokens.filter(t => getPatrol(t)?.route || hasReactions(t)) ?? [];
 }
+
+/** Tokens that keep watch: on a route, walking to an alert goal, or holding a post. */
+export const watches = p => !!(p && (p.route || p.goal || p.status === "holding"));
 
 /** Grid steps per tick for this token: its walking speed relative to 30 ft, times the token and global multipliers. */
 function stepsPerTick(td, patrol) {
@@ -38,7 +42,7 @@ function stepsPerTick(td, patrol) {
   const tickSeconds = setting("tickMs") / 1000;
   // Baseline: a 30 ft creature walks one square every 0.6 s.
   const perSecond = (walk / 30) / 0.6;
-  return Math.min(1, perSecond * tickSeconds * (Number(patrol.speed) || 1) * (Number(setting("speed")) || 1));
+  return Math.min(1, perSecond * tickSeconds * (Number(patrol.speed) || 1) * (Number(patrol.reactSpeed) || 1) * (Number(setting("speed")) || 1));
 }
 
 /** Rotation that faces the direction of travel (0 = facing down, like Foundry's auto-rotate). */
@@ -96,9 +100,11 @@ async function tick() {
 
   for (const td of scene.tokens) {
     const patrol = getPatrol(td);
-    if (!patrol?.route || patrol.status !== "patrolling") continue;
-    const route = routes[patrol.route];
-    if (!route?.points?.length) continue;
+    // "moving": walking to a goal given by the alert (a post, the alarm, back home).
+    const moving = patrol?.status === "moving" && patrol.goal;
+    if (!moving && (!patrol?.route || patrol.status !== "patrolling")) continue;
+    const route = moving ? null : routes[patrol.route];
+    if (!moving && !route?.points?.length) continue;
     // A token being dragged by the GM stays put.
     const mim = td.object?.mouseInteractionManager;
     if (mim && mim.state >= 3) continue;
@@ -118,9 +124,22 @@ async function tick() {
       }
     } else r.refused = 0;
     r.tried = null;
-    const index = Math.min(patrol.index ?? 0, route.points.length - 1);
-    const target = cellOf(route.points[index]);
+    const index = moving ? 0 : Math.min(patrol.index ?? 0, route.points.length - 1);
+    const target = cellOf(moving ? patrol.goal : route.points[index]);
+    const arrive = () => {
+      r.path = null;
+      r.avoid = null;
+      // Investigating: look around for a while before the next leg.
+      const key = `${patrol.goal.x},${patrol.goal.y},${patrol.goal.then}`;
+      if (Number(patrol.goal.wait) > 0 && r.waitedFor !== key) {
+        r.waitedFor = key;
+        r.waitUntil = now + Number(patrol.goal.wait) * 1000;
+        return;
+      }
+      tokenUpdates.push(arrivalUpdate(td, patrol));
+    };
 
+    if (moving && sameCell(cur, target)) { arrive(); continue; }
     // Arrived: wait, then head for the next point.
     if (sameCell(cur, target)) {
       const point = route.points[index];
@@ -139,6 +158,14 @@ async function tick() {
       r.pathTo = cellKey(target);
       if (!r.path && r.avoid) { r.avoid = null; r.path = findPath(cur, target); }
     }
+    if (!r.path?.length && moving) {
+      if (!r.warned?.goal) {
+        r.warned = { ...(r.warned ?? {}), goal: true };
+        ui.notifications.warn(`Chatty Wanderers: ${td.name} can't reach where the alert sends it — it stays put.`);
+      }
+      tokenUpdates.push({ _id: td.id, [`flags.${MODULE_ID}.patrol.status`]: "holding" });
+      continue;
+    }
     if (!r.path?.length) {
       // Unreachable (locked door, closed room): skip to the next point.
       r.path = null;
@@ -156,7 +183,7 @@ async function tick() {
     const info = stepInfo(cur, step);
     if (!info.ok) { r.path = null; continue; }
     if (info.doors.length) {
-      if (route.openDoors === false) { r.path = null; continue; }
+      if (route?.openDoors === false) { r.path = null; continue; }
       for (const id of info.doors) openDoors.add(id);
       r.toClose.push(...info.doors);
       r.waitUntil = now + 350; // the door swings open, then the step
@@ -165,6 +192,8 @@ async function tick() {
     // Someone stands there: wait a little, then go around.
     const there = occupied.get(cellKey(step));
     if (there && there !== td.id) {
+      // Someone stands on the goal itself (the intruder on the trap): close enough.
+      if (moving && sameCell(step, target)) { arrive(); continue; }
       if (++r.blocked > 6) {
         r.path = findPath(cur, target, { avoid: new Set([cellKey(step)]) });
         r.blocked = 0;
@@ -179,14 +208,14 @@ async function tick() {
     if (r.toClose.length) {
       r.closeAfter = (r.closeAfter ?? 2) - 1;
       if (r.closeAfter <= 0) {
-        if (route.closeDoors !== false) for (const id of r.toClose) closeDoors.add(id);
+        if (route?.closeDoors !== false) for (const id of r.toClose) closeDoors.add(id);
         r.toClose = [];
         delete r.closeAfter;
       }
     }
     const pos = tokenPositionFor(td, step);
     r.tried = { from: cur, to: step };
-    tokenUpdates.push({ _id: td.id, x: pos.x, y: pos.y, rotation: facing(cur, step) });
+    tokenUpdates.push({ _id: td.id, x: pos.x, y: pos.y, rotation: facing(cur, step), ...(moving ? leaveHiding(td, patrol) : null) });
   }
 
   if (openDoors.size || closeDoors.size) {
@@ -236,6 +265,9 @@ function onManualMove(td, changes, options) {
   if (options?.[MODULE_ID] || !isActiveGM()) return;
   if (!("x" in changes || "y" in changes)) return;
   const patrol = getPatrol(td);
+  // Moved while following the alert: it stays where the GM put it.
+  if (patrol?.status === "moving") return setStatus(td, "holding");
+  if (patrol?.status === "holding") return;
   if (!patrol?.route) return;
   const route = getRoute(td.parent, patrol.route);
   if (!route) return;
