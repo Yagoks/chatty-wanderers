@@ -217,7 +217,8 @@ export function registerVision() {
   for (const h of ["createWall", "updateWall", "deleteWall", "lightingRefresh"]) Hooks.on(h, () => { clearCones(); schedule(); });
   Hooks.on("canvasReady", () => { clearCones(); layer = null; schedule(); });
   // A player's sight changed (they moved, a door opened): cones appear and disappear with the tokens they see.
-  if (!game.user.isGM) Hooks.on("sightRefresh", schedule);
+  // (game.user doesn't exist yet at init: decide when it fires.)
+  Hooks.on("sightRefresh", () => { if (!game.user?.isGM) schedule(); });
   Hooks.on("deleteToken", td => conePolys.delete(td.id));
   return schedule;
 }
