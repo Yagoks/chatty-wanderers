@@ -1,7 +1,6 @@
 /* Chatty Wanderers */
 
 
-.cw-hud.active { box-shadow: 0 0 8px #e8b84a; }
 
 .cw-editor .cw-root { display: flex; flex-direction: column; gap: 6px; padding: 4px; }
 .cw-editor .cw-token { display: flex; align-items: center; gap: 6px; margin: 0; }

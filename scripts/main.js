@@ -22,7 +22,7 @@ function onGetSceneControlButtons(controls) {
   tools["cw-menu"] = {
     name: "cw-menu", order: 90, button: true,
     title: "Chatty Wanderers",
-    icon: "fa-solid fa-person-walking",
+    icon: "fa-solid fa-shoe-prints",
     onChange: () => toggleMenu()
   };
 }
@@ -114,7 +114,9 @@ function refreshGlobalButton() {
 /*  Token HUD: one button, a palette beside it  */
 /* -------------------------------------------- */
 
-let paletteOpen = false;
+// Open state of the module's palette (kept while the HUD redraws for the same token).
+const paletteState = { open: false, token: null };
+const rerender = hud => hud.render();
 
 function onRenderTokenHUD(hud, html) {
   if (!game.user.isGM) return;
@@ -125,15 +127,17 @@ function onRenderTokenHUD(hud, html) {
   if (!td) return;
   const patrol = getPatrol(td);
 
+  if (paletteState.token !== td.id) Object.assign(paletteState, { open: false, token: td.id });
   const main = document.createElement("button");
   main.type = "button";
-  main.className = `control-icon cw-hud ${paletteOpen ? "active" : ""}`;
+  main.className = "control-icon cw-hud";
   main.dataset.tooltip = "Chatty Wanderers";
-  main.innerHTML = `<i class="fa-solid fa-person-walking"></i>`;
+  main.innerHTML = `<i class="fa-solid fa-shoe-prints"></i>`;
   col.append(main);
 
   const palette = document.createElement("div");
-  palette.className = `cw-palette ${paletteOpen ? "active" : ""}`;
+  // Not a Foundry palette (data-palette): Foundry would try to reopen it before this hook draws it, and fail.
+  palette.className = "cw-palette";
   const button = (icon, tip, cls, run) => {
     const b = document.createElement("button");
     b.type = "button";
@@ -154,7 +158,7 @@ function onRenderTokenHUD(hud, html) {
   button(icons[notice], `${labels[notice]} — click to change`, `cw-notice cw-notice-${notice}`, async () => {
     const next = { auto: "intruder", intruder: "ignored", ignored: "auto" }[notice];
     await td.update({ [`flags.${MODULE_ID}.notice`]: next === "auto" ? null : next });
-    hud.render();
+    rerender(hud);
   });
 
   const talks = td.actor && getSpeech(td.actor).lines.some(l => l.text?.trim());
@@ -165,7 +169,7 @@ function onRenderTokenHUD(hud, html) {
   if (sounds) {
     const muted = isMuted(td);
     button(muted ? "fa-volume-xmark" : "fa-volume-low", muted ? "Muted — click to hear it again" : "Mute this token (everyone)",
-      muted ? "active cw-muted" : "", async () => { await toggleMute(td); hud.render(); });
+      muted ? "active cw-muted" : "", async () => { await toggleMute(td); rerender(hud); });
   }
   col.append(palette);
 
@@ -173,14 +177,21 @@ function onRenderTokenHUD(hud, html) {
   const place = () => {
     palette.style.top = `${main.offsetTop + main.offsetHeight - palette.offsetHeight}px`;
   };
+  const setOpen = open => {
+    paletteState.open = open;
+    main.classList.toggle("active", open);
+    palette.classList.toggle("active", open);
+    if (open) requestAnimationFrame(place);
+  };
+  // One palette at a time: opening this one closes status effects / movement, and theirs close this one.
   main.addEventListener("click", ev => {
     ev.preventDefault();
-    paletteOpen = !paletteOpen;
-    palette.classList.toggle("active", paletteOpen);
-    main.classList.toggle("active", paletteOpen);
-    place();
+    const open = !paletteState.open;
+    if (open) try { hud.togglePalette(null); } catch { /* none open */ }
+    setOpen(open);
   });
-  requestAnimationFrame(place);
+  root.querySelectorAll('[data-action="togglePalette"]').forEach(b => b.addEventListener("click", () => setOpen(false)));
+  setOpen(paletteState.open);
 }
 
 /* -------------------------------------------- */
