@@ -35,3 +35,29 @@
 .cw-card .cw-result ul { margin: 2px 0; padding-left: 16px; }
 .cw-card .cw-ok { color: #2d8a3e; }
 .cw-card .cw-fail { color: #b0302a; }
+
+/* Alert */
+#cw-alert-btn[data-level]:not([data-level="0"]) { color: #e8a54a; }
+.cw-alert .cw-alert-root { display: flex; flex-direction: column; gap: 6px; padding: 4px; }
+.cw-alert .cw-tabs { display: flex; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px; }
+.cw-alert .cw-tabs a { cursor: pointer; opacity: 0.6; }
+.cw-alert .cw-tabs a.active { opacity: 1; font-weight: bold; border-bottom: 2px solid #e8b84a; }
+.cw-alert .cw-level { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 6px; color: #eee; }
+.cw-alert .cw-num { font-size: 32px; font-weight: bold; line-height: 1; }
+.cw-alert .cw-name { font-size: 16px; font-weight: bold; }
+.cw-alert .cw-quiet { margin: 0; font-size: 12px; opacity: 0.85; }
+.cw-alert .cw-alert-buttons, .cw-alert .cw-row { display: flex; gap: 4px; align-items: center; }
+.cw-alert .cw-alert-buttons select, .cw-alert .cw-row input { flex: 1; }
+.cw-alert .cw-alert-buttons button, .cw-alert .cw-row button { flex: 0 0 auto; width: auto; padding: 0 8px; }
+.cw-alert .cw-levels { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.cw-alert .cw-levels li { font-size: 12px; padding: 3px 6px; border-left: 3px solid transparent; opacity: 0.65; }
+.cw-alert .cw-levels li span { display: block; }
+.cw-alert .cw-levels li.current { opacity: 1; border-left-color: #e8b84a; background: rgba(232, 184, 74, 0.12); }
+.cw-alert h4 { margin: 4px 0 0; }
+.cw-alert .cw-src { display: block; font-size: 12px; }
+.cw-alert .cw-src.off { opacity: 0.6; text-decoration: line-through; }
+.cw-alert .cw-log { margin: 0; padding-left: 16px; font-size: 11px; }
+.cw-alert .cw-field { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 6px; }
+.cw-alert .cw-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.cw-alert .cw-lvl { display: grid; grid-template-columns: 16px 130px 1fr auto; gap: 4px; align-items: start; }
+.cw-alert .cw-lvl button { width: auto; padding: 0 6px; }

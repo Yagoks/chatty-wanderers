@@ -5,12 +5,34 @@ import { getPatrol, getRoutes, registerPatrol, resetRuntime, scenePatrollers, se
 import { RouteEditor, clearOverlay, showSelectedRoute } from "./editor.js";
 import { drawCones, noticeClass, registerVision } from "./vision.js";
 import { registerSpotting } from "./spotting.js";
+import { AlertPanel, alertOp, getConfig as getAlertConfig, getState as getAlertState, registerAlert } from "./alert.js";
 
 /* -------------------------------------------- */
 /*  Global pause button (next to the chat)      */
 /* -------------------------------------------- */
 
+function refreshAlertButton() {
+  const host = document.querySelector("#chat-controls .control-buttons");
+  let btn = document.getElementById("cw-alert-btn");
+  const scene = canvas.scene;
+  const show = game.user.isGM && scene && getAlertConfig(scene).enabled;
+  if (!show) return btn?.remove();
+  if (!host) return;
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "cw-alert-btn";
+    btn.className = "ui-control icon fa-solid fa-bell";
+    btn.addEventListener("click", () => AlertPanel.open(canvas.scene));
+    host.prepend(btn);
+  }
+  const level = getAlertState(scene).level;
+  btn.dataset.tooltip = `Alert of ${scene.name}: level ${level}`;
+  btn.dataset.level = level;
+}
+
 function refreshGlobalButton() {
+  refreshAlertButton();
   const host = document.querySelector("#chat-controls .control-buttons");
   let btn = document.getElementById("cw-global");
   const show = game.user.isGM && scenePatrollers().length > 0;
@@ -111,6 +133,7 @@ Hooks.once("init", () => {
   });
 
   registerPatrol();
+  registerAlert();
   registerVision();
   registerSpotting();
   game.modules.get(MODULE_ID).api = {
@@ -118,7 +141,15 @@ Hooks.once("init", () => {
     start: (td, index = 0) => setStatus(td?.document ?? td, "patrolling", { index }),
     stop: td => setStatus(td?.document ?? td, "stopped"),
     pauseAll: (paused = true) => game.settings.set(MODULE_ID, "paused", paused),
-    getRoutes, findPath, cellOf, stopClock
+    getRoutes, findPath, cellOf, stopClock,
+    alert: {
+      raise: (scene, opts) => alertOp(scene ?? canvas.scene, "raise", opts),
+      lower: (scene, opts) => alertOp(scene ?? canvas.scene, "lower", opts),
+      set: (scene, level, reason) => alertOp(scene ?? canvas.scene, "set", { level, reason }),
+      get: scene => getAlertState(scene ?? canvas.scene),
+      config: scene => getAlertConfig(scene ?? canvas.scene),
+      open: scene => AlertPanel.open(scene ?? canvas.scene)
+    }
   };
 });
 
@@ -135,7 +166,21 @@ Hooks.once("ready", () => {
       if (RouteEditor.current?.td === td) RouteEditor.current.render();
     }
   });
+  // Scene configuration: open the alert of that scene.
+  Hooks.on("renderSceneConfig", (app, html) => {
+    if (!game.user.isGM) return;
+    const root = html instanceof HTMLElement ? html : html[0];
+    const tab = root?.querySelector('.tab[data-tab="basics"]') ?? root?.querySelector("form");
+    if (!tab || tab.querySelector(".cw-scene-alert")) return;
+    const div = document.createElement("div");
+    div.className = "form-group cw-scene-alert";
+    div.innerHTML = `<label>Chatty Wanderers</label><div class="form-fields">
+      <button type="button"><i class="fa-solid fa-bell"></i> Alert of this scene…</button></div>`;
+    div.querySelector("button").addEventListener("click", () => AlertPanel.open(app.document));
+    tab.append(div);
+  });
   Hooks.on("updateScene", (scene, changes) => {
+    if (scene === canvas.scene && foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) refreshAlertButton();
     if (scene === canvas.scene && foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) {
       resetRuntime();
       showSelectedRoute();

@@ -1,7 +1,7 @@
 # Chatty Wanderers
 
-Gives life to tokens in Foundry VTT v13: patrol routes, vision cones and spotting. Alert levels and speech bubbles come
-next.
+Gives life to tokens in Foundry VTT v13: patrol routes, vision cones, spotting and per-scene alert levels. Speech bubbles
+come next.
 
 ## Patrol routes
 - **Token HUD → route button** (GM) opens the route editor for that token.
@@ -42,3 +42,14 @@ Settings: clock (ms), global speed, show the route of a selected patroller.
 - The targets roll Stealth: each player from their own client (GM rolls on timeout), through Epic Rolls, or all by the
   GM. Anyone who fails is **discovered**: the patroller becomes *alerted*, the `chatty-wanderers.discovered` hook fires
   and an optional macro runs. Otherwise it carries on, and won't spot the same target again for a while.
+
+## Scene alert
+- Enable it from **Scene Configuration → Alert of this scene…**; afterwards a bell button next to the chat opens it.
+- **Setup:** title, levels (name and what happens), minutes of game time before offering to lower, minimum after an
+  intrusion, manual reasons, signals that can be switched off, bell sound (path or Sequencer key), the Ambient Sound it
+  rings from (position, radius, easing, walls) and a tile that swings.
+- **Status:** current level, what each level means, +1 / −1 / reset, signals and history.
+- A patrol that discovers someone raises it (optional). Each raise rings the bell and whispers the GM the new level.
+- After a quiet stretch of game time the GM gets a "Lower the alert" button; never below the minimum after an intrusion.
+- API for traps, puzzles and macros: `game.modules.get("chatty-wanderers").api.alert.raise(scene, { source, reason })`,
+  plus `lower`, `set`, `get`, `config`, `open`. Hook: `chatty-wanderers.alertChanged`.
