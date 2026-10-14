@@ -129,3 +129,12 @@
 .cw-sounds .cw-sound-opts input[type="range"] { width: 80px; }
 .cw-sounds .cw-preset { flex: 1; }
 .cw-sounds .cw-hint { margin: 0; font-size: 11px; opacity: 0.75; }
+
+.cw-sounds .cw-sound-opts .cw-walls { flex: 1 1 150px; }
+.cw-sounds .cw-row button.active { background: rgba(90, 168, 255, 0.35); border-color: #5aa8ff; }
+
+/* Tall windows scroll instead of running off the screen */
+#chatty-wanderers-editor, .application.cw-speech, .application.cw-sounds, .application.cw-alert { max-height: calc(100vh - 60px); }
+#chatty-wanderers-editor .window-content, .cw-speech .window-content, .cw-sounds .window-content, .cw-alert .window-content { overflow-y: auto; }
+.cw-editor .cw-vision .cw-field { grid-template-columns: 90px 1fr; }
+.cw-card .cw-result button { margin-top: 3px; }

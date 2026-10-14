@@ -3,6 +3,8 @@
 
 import { MODULE_ID, cellOf, centerOf, findPath } from "./pathing.js";
 import { getPatrol, getRoute, getRoutes, setStatus } from "./patrol.js";
+import { DETECT, ON_DISCOVER } from "./spotting.js";
+import { sensesOf } from "./vision.js";
 import { ACTIONS, getReactions, hasReactions } from "./reactions.js";
 import { getConfig as getAlertConfig, getState as getAlertState } from "./alert.js";
 
@@ -163,11 +165,6 @@ export class RouteEditor extends ApplicationV2 {
       <label class="cw-check"><input type="checkbox" data-r="openDoors" ${route.openDoors !== false ? "checked" : ""}> Opens unlocked doors</label>
       <label class="cw-check"><input type="checkbox" data-r="closeDoors" ${route.closeDoors !== false ? "checked" : ""}> Closes them behind it</label>
       <label class="cw-field"><span>Speed ×</span><input type="number" step="0.1" min="0.1" data-p="speed" value="${esc(patrol.speed ?? 1)}"></label>
-      <fieldset class="cw-vision"><legend>Vision</legend>
-        <label class="cw-check"><input type="checkbox" data-v="enabled" ${patrol.vision?.enabled !== false ? "checked" : ""}> Spots intruders</label>
-        <label class="cw-field"><span>Angle (°)</span><input type="number" min="10" max="360" step="5" data-v="angle" value="${esc(patrol.vision?.angle ?? "")}" placeholder="${setting("coneAngle")}"></label>
-        <label class="cw-field"><span>Range (ft)</span><input type="number" min="5" step="5" data-v="range" value="${esc(patrol.vision?.range ?? "")}" placeholder="${setting("coneRange")}"></label>
-      </fieldset>
       <div class="cw-points">
         ${route.points.map((p, i) => `
           <div class="cw-point"><b>${i + 1}</b>
@@ -182,8 +179,25 @@ export class RouteEditor extends ApplicationV2 {
           ? `<button type="button" data-do="stop"><i class="fa-solid fa-pause"></i> Stop</button>`
           : `<button type="button" data-do="start" ${route.points.length ? "" : "disabled"}><i class="fa-solid fa-play"></i> Start from point 1</button>`}
       </div>` : `<p class="cw-hint">Pick a route of this scene or create a new one.</p>`}
+      ${this._visionHTML(patrol, opts)}
       ${this._reactionsHTML(routes)}`;
     return root;
+  }
+
+  /** The cone, its senses, and what happens when it notices someone. */
+  _visionHTML(patrol, opts) {
+    const S = sensesOf(this.td);
+    const senses = [S.blind ? "no sight" : `sight${S.darkvision ? `, darkvision ${S.darkvision} ft` : ""}`,
+      S.truesight && `truesight ${S.truesight} ft`, S.blindsight && `blindsight ${S.blindsight} ft`, S.tremorsense && `tremorsense ${S.tremorsense} ft`].filter(Boolean).join(" • ");
+    const sp = { detect: "ask", onDiscover: "stop", ...(patrol.spotting ?? {}) };
+    return `<fieldset class="cw-vision"><legend>Vision</legend>
+        <label class="cw-check"><input type="checkbox" data-v="enabled" ${patrol.vision?.enabled !== false ? "checked" : ""}> Spots intruders</label>
+        <label class="cw-field"><span>Angle (°)</span><input type="number" min="10" max="360" step="5" data-v="angle" value="${esc(patrol.vision?.angle ?? "")}" placeholder="${setting("coneAngle")}"></label>
+        <label class="cw-field"><span>Range (ft)</span><input type="number" min="5" step="5" data-v="range" value="${esc(patrol.vision?.range ?? "")}" placeholder="${setting("coneRange")}"></label>
+        <p class="cw-hint">Senses (from the sheet): ${esc(senses)}. Light from the map and torches counts; dim light, darkvision in the dark and invisible targets give it disadvantage.</p>
+        <label class="cw-field"><span>Noticing</span><select data-sp="detect">${opts(DETECT, sp.detect)}</select></label>
+        <label class="cw-field"><span>Discovering</span><select data-sp="onDiscover">${opts(ON_DISCOVER, sp.onDiscover)}</select></label>
+      </fieldset>`;
   }
 
   /** What this token does at each alert level of the scene. */
@@ -234,6 +248,9 @@ export class RouteEditor extends ApplicationV2 {
     el.querySelectorAll("[data-v]").forEach(inp => inp.addEventListener("change", async () => {
       const value = inp.type === "checkbox" ? inp.checked : (inp.value === "" ? null : Number(inp.value));
       await this.td.update({ [`flags.${MODULE_ID}.patrol.vision.${inp.dataset.v}`]: value }, { [MODULE_ID]: true });
+    }));
+    el.querySelectorAll("[data-sp]").forEach(inp => inp.addEventListener("change", async () => {
+      await this.td.update({ [`flags.${MODULE_ID}.patrol.spotting.${inp.dataset.sp}`]: inp.value }, { [MODULE_ID]: true });
     }));
     el.querySelectorAll("[data-wait]").forEach(inp => inp.addEventListener("change", async () => {
       const route = this.route;

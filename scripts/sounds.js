@@ -12,6 +12,9 @@ const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
 const BASE = `modules/${MODULE_ID}/sounds`;
 
 export const MODES = { moving: "While it walks (loop)", always: "Always (loop)", random: "Now and then" };
+// Like an Ambient Sound: walls can be ignored, block the sound, or let it through muffled (quieter, low-pass).
+export const WALLS = { muffle: "Muffled through walls", block: "Blocked by walls", ignore: "Ignores walls" };
+const MUFFLED_VOLUME = 0.35;
 
 const FX = "modules/soundfxlibrary/Creatures";
 export const PRESETS = {
@@ -27,12 +30,13 @@ export const PRESETS = {
 };
 
 const DEFAULT_SOUNDS = { enabled: true, whileHidden: false, list: [] };
-const DEFAULT_ENTRY = { src: "", mode: "moving", volume: 0.7, radius: 40, min: 20, max: 60, walls: true };
+const DEFAULT_ENTRY = { src: "", mode: "moving", volume: 0.7, radius: 40, min: 20, max: 60, walls: "muffle", easing: true };
+const wallMode = e => (e.walls === true || e.walls === undefined ? "muffle" : e.walls === false ? "ignore" : e.walls);
 
 export function getSounds(actor) {
   const saved = foundry.utils.getProperty(actor?.flags ?? {}, `${MODULE_ID}.sounds`);
   const s = foundry.utils.mergeObject(foundry.utils.deepClone(DEFAULT_SOUNDS), foundry.utils.deepClone(saved ?? {}), { inplace: false });
-  s.list = (s.list ?? []).map(e => ({ ...DEFAULT_ENTRY, ...e }));
+  s.list = (s.list ?? []).map(e => ({ ...DEFAULT_ENTRY, ...e, walls: wallMode(e) }));
   return s;
 }
 
@@ -65,27 +69,55 @@ function listeners() {
   return canvas.tokens.placeables.filter(t => t.actor?.isOwner).map(t => t.center);
 }
 
-function blocked(a, b) {
+/** Where the sound reaches unobstructed: the same wall-clipped area an Ambient Sound uses (cached until the token moves). */
+const polys = new Map();
+export function soundArea(token, radiusPx) {
+  const c = token.center;
+  const key = `${Math.round(c.x)},${Math.round(c.y)},${Math.round(radiusPx)}`;
+  const hit = polys.get(token.id);
+  if (hit?.key === key) return hit.poly;
+  let poly = null;
   try {
-    return !!CONFIG.Canvas.polygonBackends.sound.testCollision(a, b, { type: "sound", mode: "any" });
-  } catch { return false; }
+    poly = CONFIG.Canvas.polygonBackends.sound.create({ x: c.x, y: c.y, elevation: token.document.elevation ?? 0 }, { type: "sound", radius: radiusPx });
+  } catch (err) { console.warn(`${MODULE_ID} | sound area`, err); }
+  polys.set(token.id, { key, poly });
+  return poly;
 }
 
-/** Volume of one sound of a token for this client (0 = silent). */
+/** How one sound of a token reaches this client: { volume, muffled } (volume 0 = silent). */
 function volumeFor(token, entry, ears) {
-  if (!ears.length) return 0;
+  const out = { volume: 0, muffled: false };
+  if (!ears.length) return out;
   const radius = (Number(entry.radius) || 40) * canvas.dimensions.distancePixels;
+  const walls = wallMode(entry);
+  const area = walls === "ignore" ? null : soundArea(token, radius);
   const c = token.center;
-  let best = 0;
   for (const ear of ears) {
     const d = Math.hypot(ear.x - c.x, ear.y - c.y);
     if (d >= radius) continue;
     const k = 1 - d / radius;
-    let v = k * k * (3 - 2 * k);
-    if (entry.walls !== false && blocked(ear, c)) v *= 0.25;
-    best = Math.max(best, v);
+    let v = entry.easing === false ? 1 : k * k * (3 - 2 * k);
+    let muffled = false;
+    if (area && !area.contains(ear.x, ear.y)) {
+      if (walls === "block") continue;
+      v *= MUFFLED_VOLUME;
+      muffled = true;
+    }
+    // The clearest way the sound reaches any of this client's tokens wins.
+    if (v > out.volume || (v === out.volume && !muffled)) Object.assign(out, { volume: v, muffled });
   }
-  return best * (Number(entry.volume) || 0.7);
+  out.volume *= Number(entry.volume) || 0.7;
+  return out;
+}
+
+/** Switch the low-pass "through the wall" filter on or off. */
+function setMuffled(sound, slot, muffled) {
+  if (!sound || slot.muffled === muffled) return;
+  slot.muffled = muffled;
+  try {
+    const Filter = foundry.audio.BiquadFilterEffect;
+    sound.applyEffects(muffled && Filter ? [new Filter(sound.context, { type: "lowpass", intensity: 6 })] : []);
+  } catch (err) { console.warn(`${MODULE_ID} | muffle`, err); }
 }
 
 function audible(td, cfg) {
@@ -150,10 +182,12 @@ function hearTick() {
     const on = audible(td, cfg);
     for (const slot of p.slots) {
       if (slot.failed) continue;
-      const target = on && (slot.entry.mode === "always" || isMoving(td)) ? volumeFor(token, slot.entry, ears) : 0;
+      const heard = on && (slot.entry.mode === "always" || isMoving(td)) ? volumeFor(token, slot.entry, ears) : { volume: 0 };
+      const target = heard.volume;
       if (target > 0.001) {
         slot.zeroSince = null;
         if (!slot.sound) { startLoop(slot); continue; }
+        setMuffled(slot.sound, slot, heard.muffled);
         slot.sound.fade(target, { duration: 250 });
       } else if (slot.sound) {
         slot.sound.fade(0, { duration: 400 });
@@ -174,12 +208,13 @@ async function playOnce({ sceneId, tokenId, index, src }) {
   const cfg = getSounds(token.actor);
   const entry = cfg.list[index];
   if (!entry || !audible(token.document, cfg)) return;
-  const volume = volumeFor(token, entry, listeners());
+  const { volume, muffled } = volumeFor(token, entry, listeners());
   if (volume <= 0.001) return;
   await game.audio.unlock;
   const sound = new foundry.audio.Sound(src, { context: game.audio.environment });
   try {
     await sound.load();
+    if (muffled) setMuffled(sound, {}, true);
     await sound.play({ volume });
   } catch (err) { console.warn(`${MODULE_ID} | sound`, src, err); }
 }
@@ -233,6 +268,114 @@ export function toggleMute(td) {
 }
 
 /* -------------------------------------------- */
+/*  Reach on the map (GM, while editing)        */
+/* -------------------------------------------- */
+
+/** A token of this actor on the viewed scene (the token itself for an unlinked sheet). */
+function tokenFor(actor) {
+  if (actor?.isToken) return actor.token?.object ?? null;
+  return actor?.getActiveTokens?.()[0] ?? null;
+}
+
+let range = null; // { editor, index, token, radius, layer, area, ring, until, drag }
+const BLUE = 0x3a8dde;
+
+function hideRange() {
+  if (!range) return;
+  canvas.app?.ticker.remove(range.tick);
+  const board = canvas.app?.view?.parentElement;
+  board?.removeEventListener("pointerdown", range.onDown, true);
+  window.removeEventListener("pointermove", range.onMove, true);
+  window.removeEventListener("pointerup", range.onUp, true);
+  if (!range.layer.destroyed) range.layer.destroy({ children: true });
+  range = null;
+}
+
+function toggleRange(editor, index) {
+  if (range?.editor === editor && range.index === index && !range.until) return hideRange();
+  showRange(editor, index);
+}
+
+/** Draw where a sound of the editor's actor is heard; `ms` hides it again after a while (the ▶ preview). */
+function showRange(editor, index, ms = null) {
+  hideRange();
+  const token = tokenFor(editor.actor);
+  if (!token) return ui.notifications.warn("Put a token of this actor on the scene you are viewing.");
+  const entry = getSounds(editor.actor).list[index];
+  if (!entry) return;
+  const layer = new PIXI.Container();
+  layer.eventMode = "none";
+  layer.zIndex = 900;
+  const area = new PIXI.Graphics();
+  const ring = new PIXI.Graphics();
+  layer.addChild(area, ring);
+  canvas.controls.addChild(layer);
+  range = { editor, index, token, entry, radius: Number(entry.radius) || 40, layer, area, ring, until: ms ? Date.now() + ms : null, key: null };
+
+  const px = () => range.radius * canvas.dimensions.distancePixels;
+  const draw = () => {
+    const r = px();
+    const c = token.center;
+    const walls = wallMode(range.entry);
+    area.clear();
+    // Faint disc: the whole reach (heard only muffled where walls are in the way).
+    area.beginFill(BLUE, walls === "block" ? 0 : walls === "ignore" ? 1 : 0.35).drawCircle(c.x, c.y, r).endFill();
+    if (walls !== "ignore") {
+      const poly = soundArea(token, r);
+      if (poly) area.beginFill(BLUE, 1).drawPolygon(poly.points).endFill();
+    }
+    ring.clear();
+    const w = 3 / canvas.stage.scale.x;
+    ring.lineStyle(w, 0x5aa8ff, 0.95).drawCircle(c.x, c.y, r);
+    ring.lineStyle(w, 0xffffff, 0.9).beginFill(0x5aa8ff, 1).drawCircle(c.x + r, c.y, 7 / canvas.stage.scale.x).endFill();
+    range.key = `${Math.round(c.x)},${Math.round(c.y)},${range.radius},${canvas.stage.scale.x.toFixed(2)}`;
+  };
+  // A very slow pulse: only the transparency of one drawing changes, the shape is redrawn only when something moves.
+  range.tick = () => {
+    if (!range || token.destroyed) return hideRange();
+    if (range.until && Date.now() > range.until) return hideRange();
+    const c = token.center;
+    if (range.key !== `${Math.round(c.x)},${Math.round(c.y)},${range.radius},${canvas.stage.scale.x.toFixed(2)}`) draw();
+    area.alpha = 0.1 + 0.08 * (0.5 + 0.5 * Math.sin((performance.now() / 4500) * 2 * Math.PI));
+  };
+  const point = ev => canvas.canvasCoordinatesFromClient({ x: ev.clientX, y: ev.clientY });
+  range.onDown = ev => {
+    if (ev.button !== 0 || ev.target !== canvas.app.view) return;
+    const p = point(ev);
+    const c = token.center;
+    const tolerance = 12 / canvas.stage.scale.x;
+    if (Math.abs(Math.hypot(p.x - c.x, p.y - c.y) - px()) > tolerance) return;
+    ev.stopPropagation(); ev.preventDefault();
+    range.drag = true;
+    range.until = null; // dragging keeps it on screen
+  };
+  range.onMove = ev => {
+    if (!range?.drag) return;
+    ev.stopPropagation();
+    const p = point(ev);
+    const c = token.center;
+    const step = canvas.dimensions.distance || 5;
+    range.radius = Math.max(step, Math.round(Math.hypot(p.x - c.x, p.y - c.y) / canvas.dimensions.distancePixels / step) * step);
+    const input = editor.element?.querySelector(`[data-i="${index}"][data-k="radius"]`);
+    if (input) input.value = range.radius;
+  };
+  range.onUp = async ev => {
+    if (!range?.drag) return;
+    ev.stopPropagation();
+    range.drag = false;
+    const cfg = editor._read();
+    cfg.list[index].radius = range.radius;
+    range.entry = cfg.list[index];
+    await editor._save(cfg);
+  };
+  canvas.app.view.parentElement.addEventListener("pointerdown", range.onDown, true);
+  window.addEventListener("pointermove", range.onMove, true);
+  window.addEventListener("pointerup", range.onUp, true);
+  draw();
+  canvas.app.ticker.add(range.tick);
+}
+
+/* -------------------------------------------- */
 /*  Editor                                      */
 /* -------------------------------------------- */
 
@@ -257,8 +400,19 @@ export class SoundsEditor extends ApplicationV2 {
     this.actor = actor;
   }
 
+  _onClose(options) {
+    if (range?.editor === this) hideRange();
+    return super._onClose?.(options);
+  }
+
   async _save(cfg) {
     await this.actor.update({ [`flags.${MODULE_ID}.sounds`]: cfg });
+    // Keep the reach drawing in step with what was just saved.
+    if (range?.editor === this) {
+      range.entry = cfg.list[range.index] ?? range.entry;
+      range.radius = Number(range.entry.radius) || range.radius;
+      range.key = null;
+    }
     this.render();
   }
 
@@ -282,7 +436,8 @@ export class SoundsEditor extends ApplicationV2 {
             <div class="cw-row">
               <input type="text" data-i="${i}" data-k="src" value="${esc(e.src)}" placeholder="file, several files separated by | , or a Sequencer key">
               <button type="button" data-browse="${i}" data-tooltip="Pick a file"><i class="fa-solid fa-file-audio"></i></button>
-              <button type="button" data-test="${i}" data-tooltip="Listen (only you)"><i class="fa-solid fa-play"></i></button>
+              <button type="button" data-test="${i}" data-tooltip="Listen (only you) — shows how far it reaches"><i class="fa-solid fa-play"></i></button>
+              <button type="button" data-range="${i}" class="${range?.editor === this && range.index === i ? "active" : ""}" data-tooltip="Show how far it is heard (drag the blue edge to change it)"><i class="fa-solid fa-bullseye"></i></button>
               <button type="button" data-del="${i}" data-tooltip="Remove"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="cw-row cw-sound-opts">
@@ -290,7 +445,8 @@ export class SoundsEditor extends ApplicationV2 {
               <label>vol <input type="range" min="0" max="1" step="0.05" data-i="${i}" data-k="volume" value="${esc(e.volume)}"></label>
               <label>heard up to <input type="number" min="5" step="5" data-i="${i}" data-k="radius" value="${esc(e.radius)}"> ft</label>
               ${e.mode === "random" ? `<label>every <input type="number" min="2" data-i="${i}" data-k="min" value="${esc(e.min)}">–<input type="number" min="2" data-i="${i}" data-k="max" value="${esc(e.max)}"> s</label>` : ""}
-              <label class="cw-check" data-tooltip="Quieter behind walls and closed doors"><input type="checkbox" data-i="${i}" data-k="walls" ${e.walls !== false ? "checked" : ""}> walls</label>
+              <select data-i="${i}" data-k="walls" class="cw-walls">${opt(WALLS, wallMode(e))}</select>
+              <label class="cw-check" data-tooltip="Quieter the farther away (off: same volume up to the edge)"><input type="checkbox" data-i="${i}" data-k="easing" ${e.easing !== false ? "checked" : ""}> fades with distance</label>
             </div>
           </div>`).join("") || `<p class="cw-hint">No sounds yet.</p>`}
       </div>
@@ -299,7 +455,8 @@ export class SoundsEditor extends ApplicationV2 {
         <button type="button" data-do="add"><i class="fa-solid fa-plus"></i> Empty</button>
       </div>
       <p class="cw-hint">Environment channel. Each player hears it from their tokens (the GM: from the selected token, or the middle of the screen).
-        Several sounds play together. Mute a token from its HUD; mute all from the left toolbar.</p>`;
+        Several sounds play together. Mute a token from its HUD; mute all from the left toolbar.
+        <i class="fa-solid fa-bullseye"></i> shows the reach on the map: bright blue = heard clearly, faint = only muffled through walls.</p>`;
     return root;
   }
 
@@ -311,6 +468,7 @@ export class SoundsEditor extends ApplicationV2 {
       const k = inp.dataset.k;
       e[k] = inp.type === "checkbox" ? inp.checked : ["volume", "radius", "min", "max"].includes(k) ? Number(inp.value) : inp.value;
     });
+    cfg.list.forEach(e => { e.walls = wallMode(e); });
     return cfg;
   }
 
@@ -331,10 +489,16 @@ export class SoundsEditor extends ApplicationV2 {
         this._save(cfg);
       } }).render(true);
     }));
+    content.querySelectorAll("[data-range]").forEach(b => b.addEventListener("click", () => {
+      toggleRange(this, Number(b.dataset.range));
+      this.render();
+    }));
     content.querySelectorAll("[data-test]").forEach(b => b.addEventListener("click", async () => {
       const e = this._read().list[Number(b.dataset.test)];
       const src = resolveSrc(e?.src);
       if (!src) return;
+      // The reach shows while it plays.
+      if (!(range?.editor === this && range.index === Number(b.dataset.test))) showRange(this, Number(b.dataset.test), 6000);
       const sound = new foundry.audio.Sound(src, { context: game.audio.environment });
       await sound.load();
       await sound.play({ volume: Number(e.volume) || 0.7 });
