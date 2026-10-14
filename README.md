@@ -117,7 +117,7 @@ player's tokens are, quieter through walls and closed doors. Nothing to attach o
   with distance.
 - The target button shows the reach on the map in blue (bright = heard clearly, faint = only muffled), pulsing very
   slowly; drag its edge to change the distance. It also shows while you preview the sound.
-- Ready sounds: three synthesized footstep loops shipped with the module (light, heavy with claws, armored) and, if
+- Ready sounds: three footstep loops shipped with the module (light, heavy with claws, armored — from Kenney's CC0 RPG Audio) and, if
   Sound FX Library is installed, its growls, moans and angry noises.
 - Tokens hidden by the GM are silent; invisible or hiding creatures are still heard.
 - Mute one token for everyone from its HUD palette; mute all from the toolbar flyout. Each player can turn token sounds
@@ -130,4 +130,4 @@ player's tokens are, quieter through walls and closed doors. Nothing to attach o
 - **Left toolbar (Token controls):** one footprints button; it opens a row with pause patrols, scene alert (with its level),
   mute all token sounds and speech on/off. It turns orange while the alert is above 0 or something is paused/muted.
 
-The footstep sounds in `sounds/` were synthesized for this module and are free to use (CC0).
+The footstep loops in `sounds/` are built from single steps of Kenney's **RPG Audio** (CC0, www.kenney.nl — see `sounds/LICENSE-kenney-rpg-audio.txt`), pitched and layered for each kind of creature.
