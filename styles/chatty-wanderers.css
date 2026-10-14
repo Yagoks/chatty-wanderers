@@ -1,0 +1,25 @@
+/* Chatty Wanderers */
+
+#cw-global.cw-paused { color: #e07a5f; }
+
+.cw-hud.active { box-shadow: 0 0 8px #e8b84a; }
+
+.cw-editor .cw-root { display: flex; flex-direction: column; gap: 6px; padding: 4px; }
+.cw-editor .cw-token { display: flex; align-items: center; gap: 6px; margin: 0; }
+.cw-editor .cw-token img { width: 32px; height: 32px; border: none; object-fit: contain; }
+.cw-editor .cw-status { margin-left: auto; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #444; color: #eee; }
+.cw-editor .cw-status.cw-patrolling { background: #2d6a3e; }
+.cw-editor .cw-status.cw-detached { background: #8a5a12; }
+.cw-editor .cw-row { display: flex; gap: 4px; align-items: center; }
+.cw-editor .cw-row select { flex: 1; }
+.cw-editor .cw-row button { flex: 0 0 auto; width: auto; padding: 0 8px; }
+.cw-editor .cw-field { display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 6px; }
+.cw-editor .cw-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.cw-editor .cw-points { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; }
+.cw-editor .cw-point { display: flex; align-items: center; gap: 8px; padding: 2px 4px; border-radius: 3px; background: rgba(255, 255, 255, 0.05); }
+.cw-editor .cw-point label { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.cw-editor .cw-point input { width: 52px; }
+.cw-editor .cw-point button { margin-left: auto; width: auto; padding: 0 6px; }
+.cw-editor button.active { background: rgba(232, 184, 74, 0.35); border-color: #e8b84a; }
+.cw-editor .cw-hint { margin: 0; font-size: 11px; opacity: 0.75; }
+.cw-editor .cw-controls button { flex: 1; }
