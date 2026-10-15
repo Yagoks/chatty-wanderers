@@ -8,9 +8,10 @@
 import { MODULE_ID, tokenCenter } from "./pathing.js";
 import { getPatrol, isActiveGM, resetRuntime, setting, watches } from "./patrol.js";
 import { detect, noticeClass } from "./vision.js";
+import { startRun } from "./messenger.js";
 
 export const DETECT = { ask: "Ask me (card with buttons)", passive: "Passive Perception (automatic)", active: "Searching: rolls Perception (automatic)" };
-export const ON_DISCOVER = { stop: "Stops and waits for me", combat: "Starts combat" };
+export const ON_DISCOVER = { stop: "Stops and waits for me", combat: "Starts combat", warn: "Runs to warn (to a point; the alert goes up when it gets there)" };
 const spotting = td => ({ detect: "ask", onDiscover: "stop", ...(getPatrol(td)?.spotting ?? {}) });
 const HOW = { tremorsense: "tremorsense", blindsight: "blindsight", truesight: "truesight", sight: "sight" };
 
@@ -31,7 +32,8 @@ export async function checkSpotting(scene) {
   if (!intruders.length) return;
   for (const td of scene.tokens) {
     const p = getPatrol(td);
-    if (!watches(p) || td.hidden || p.status === "spotted" || p.status === "alerted" || p.vision?.enabled === false) continue;
+    // A messenger already running (or halted) doesn't stop to look again.
+    if (!watches(p) || p.run || td.hidden || p.status === "spotted" || p.status === "alerted" || p.vision?.enabled === false) continue;
     const found = new Map();
     for (const t of intruders) {
       if (t.id === td.id || (cooldown.get(`${td.id}:${t.id}`) ?? 0) >= now) continue;
@@ -205,8 +207,12 @@ async function resolveSpot(message, action) {
   }).join("");
   const discovered = targets.filter(t => totals.get(t.id) < dcs.get(t.id));
   const fight = discovered.length && spotting(td).onDiscover === "combat";
+  const warn = discovered.length && spotting(td).onDiscover === "warn" && spotting(td).warnPoint;
   if (!discovered.length) await resume(td, info.targets);
-  else {
+  else if (warn) {
+    Hooks.callAll(`${MODULE_ID}.discovered`, td, discovered);
+    await startRun(td, { reason: discovered.map(t => t.name).join(", ") });
+  } else {
     await td.update({ [`flags.${MODULE_ID}.patrol.status`]: "alerted" }, { [MODULE_ID]: true });
     Hooks.callAll(`${MODULE_ID}.discovered`, td, discovered);
     const macroName = setting("discoveredMacro");
@@ -214,7 +220,7 @@ async function resolveSpot(message, action) {
   }
   await message.update({
     content: `${stripButtons(message.content).replace(/<p class="cw-hint"><em>[\s\S]*?<\/em><\/p>/, "")}<div class="cw-result"><p>Stealth vs ${action === "passive" ? "passive Perception" : "Perception roll"}:</p><ul>${rows}</ul>
-      ${discovered.length ? `${fight ? "<p><em>Combat!</em></p>" : `<button type="button" data-cw-spot="combat"><i class="fa-solid fa-swords"></i> Start combat</button>`}
+      ${discovered.length && warn ? `<p><em>${esc(td.name)} runs to warn the others!</em></p>` : discovered.length ? `${fight ? "<p><em>Combat!</em></p>" : `<button type="button" data-cw-spot="combat"><i class="fa-solid fa-swords"></i> Start combat</button>`}
         <button type="button" data-cw-spot="resume"><i class="fa-solid fa-route"></i> Back to the route</button>` : `<p><em>${esc(td.name)} carries on.</em></p>`}</div>`,
     [`flags.${MODULE_ID}.spot.discovered`]: discovered.map(t => t.id)
   });

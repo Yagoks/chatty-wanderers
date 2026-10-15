@@ -5,6 +5,7 @@ import { getPatrol, getRoutes, registerPatrol, resetRuntime, scenePatrollers, se
 import { RouteEditor, clearOverlay, showSelectedRoute } from "./editor.js";
 import { drawCones, noticeClass, registerVision } from "./vision.js";
 import { registerSpotting } from "./spotting.js";
+import { cancelRun, registerMessenger, startRun } from "./messenger.js";
 import { SpeechEditor, getSpeech, registerSpeech, say, startSpeech, stopSpeech } from "./speech.js";
 import { SoundsEditor, hasSounds, isMuted, registerSounds, startSounds, stopSounds, toggleMute } from "./sounds.js";
 import { AlertPanel, alertOp, getConfig as getAlertConfig, getState as getAlertState, registerAlert } from "./alert.js";
@@ -243,12 +244,15 @@ Hooks.once("init", () => {
   registerAlert();
   registerVision();
   registerSpotting();
+  registerMessenger();
   registerSpeech();
   registerSounds();
   game.modules.get(MODULE_ID).api = {
     openEditor: td => RouteEditor.open(td?.document ?? td),
     start: (td, index = 0) => setStatus(td?.document ?? td, "patrolling", { index }),
     stop: td => setStatus(td?.document ?? td, "stopped"),
+    runToWarn: td => startRun(td?.document ?? td),
+    cancelRun: td => cancelRun(td?.document ?? td),
     pauseAll: (paused = true) => game.settings.set(MODULE_ID, "paused", paused),
     getRoutes, findPath, cellOf, stopClock: () => { stopClock(); stopSpeech(); stopSounds(); },
     openSounds: actor => SoundsEditor.open(actor?.actor ?? actor),

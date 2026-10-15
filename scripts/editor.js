@@ -7,6 +7,7 @@ import { DETECT, ON_DISCOVER } from "./spotting.js";
 import { CONE_FOR_PLAYERS, sensesOf } from "./vision.js";
 import { ACTIONS, getReactions, hasReactions } from "./reactions.js";
 import { getConfig as getAlertConfig, getState as getAlertState } from "./alert.js";
+import { cancelRun, startRun } from "./messenger.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const esc = s => foundry.utils.escapeHTML(String(s ?? ""));
@@ -80,7 +81,9 @@ export function drawRoute(route, { strong = true, drag = null } = {}) {
 /** Where a token goes at each alert level ("Go to a point"): a diamond with the level number. */
 export function drawReactionPoints(td) {
   const reactions = getReactions(td);
-  const marks = Object.entries(reactions).filter(([, r]) => r?.action === "goto" && r.point);
+  const marks = Object.entries(reactions).filter(([, r]) => r?.action === "goto" && r.point).map(([l, r]) => [`A${l}`, r]);
+  const warn = getPatrol(td)?.spotting;
+  if (warn?.onDiscover === "warn" && warn.warnPoint) marks.push(["!", { point: warn.warnPoint }]);
   if (!marks.length) return;
   const layer = ensureOverlay();
   const size = canvas.grid.size;
@@ -90,7 +93,7 @@ export function drawReactionPoints(td) {
     const g = new PIXI.Graphics();
     g.lineStyle(size * 0.04, 0x000000, 0.8).beginFill(0xe85a4a, 0.9).drawPolygon([x, y - s, x + s, y, x, y + s, x - s, y]).endFill();
     layer.addChild(g);
-    const label = new PIXI.Text(`A${level}`, { fontFamily: "Signika", fontSize: size * 0.2, fontWeight: "bold", fill: 0xffffff });
+    const label = new PIXI.Text(level, { fontFamily: "Signika", fontSize: size * 0.2, fontWeight: "bold", fill: 0xffffff });
     label.anchor.set(0.5);
     label.position.set(x, y);
     layer.addChild(label);
@@ -144,7 +147,7 @@ export class RouteEditor extends ApplicationV2 {
     const patrol = this.patrol;
     const status = patrol.status ?? "stopped";
     const statusLabel = { patrolling: "Patrolling", stopped: "Stopped", detached: "Off its route (stopped)", spotted: "Spotted someone", alerted: "Alerted",
-      moving: "Following the alert", holding: "Holding position" }[status] ?? status;
+      moving: patrol.run ? "Running to warn" : "Following the alert", holding: "Holding position", halted: "Run interrupted (hit)" }[status] ?? status;
     const opts = (map, cur) => Object.entries(map).map(([k, v]) => `<option value="${k}" ${k === cur ? "selected" : ""}>${esc(v)}</option>`).join("");
     const root = document.createElement("div");
     root.className = "cw-root";
@@ -198,6 +201,13 @@ export class RouteEditor extends ApplicationV2 {
         <p class="cw-hint">Players only see the cone of a token they can see (not through fog or walls, not while it is invisible or hiding). Senses (from the sheet): ${esc(senses)}. Light from the map and torches counts; dim light, darkvision in the dark and invisible targets give it disadvantage.</p>
         <label class="cw-field"><span>Noticing</span><select data-sp="detect">${opts(DETECT, sp.detect)}</select></label>
         <label class="cw-field"><span>Discovering</span><select data-sp="onDiscover">${opts(ON_DISCOVER, sp.onDiscover)}</select></label>
+        ${sp.onDiscover === "warn" ? `<div class="cw-react-extra">
+          <button type="button" data-pick="warn" class="${this.picking === "warn" ? "active" : ""}"><i class="fa-solid fa-location-dot"></i> ${this.picking === "warn" ? "Click the map…" : sp.warnPoint ? "Move where it runs" : "Set where it runs"}</button>
+          <label>speed × <input type="number" min="0.5" step="0.1" data-spn="warnSpeed" value="${esc(sp.warnSpeed ?? "")}" placeholder="2"></label></div>
+          <p class="cw-hint">It runs there and the alert goes up one level when it arrives. Hit on the way: it stops, the game pauses and you get a card. A combat cancels the run; so does 0 HP. Grappled or incapacitated: it waits.</p>
+          <div class="cw-row">${patrol.run
+            ? `<button type="button" data-do="cancelRun"><i class="fa-solid fa-ban"></i> Cancel the run</button>`
+            : `<button type="button" data-do="runNow" ${sp.warnPoint ? "" : "disabled"}><i class="fa-solid fa-person-running"></i> Send it to warn now</button>`}</div>` : ""}
       </fieldset>`;
   }
 
@@ -255,6 +265,10 @@ export class RouteEditor extends ApplicationV2 {
     }));
     el.querySelectorAll("[data-sp]").forEach(inp => inp.addEventListener("change", async () => {
       await this.td.update({ [`flags.${MODULE_ID}.patrol.spotting.${inp.dataset.sp}`]: inp.value }, { [MODULE_ID]: true });
+      if (inp.dataset.sp === "onDiscover" && inp.value === "warn" && !this.patrol.spotting?.warnPoint) { this.picking = "warn"; this.render(); }
+    }));
+    el.querySelectorAll("[data-spn]").forEach(inp => inp.addEventListener("change", async () => {
+      await this.td.update({ [`flags.${MODULE_ID}.patrol.spotting.${inp.dataset.spn}`]: inp.value === "" ? null : Number(inp.value) }, { [MODULE_ID]: true });
     }));
     el.querySelectorAll("[data-wait]").forEach(inp => inp.addEventListener("change", async () => {
       const route = this.route;
@@ -274,7 +288,7 @@ export class RouteEditor extends ApplicationV2 {
       this.render();
     }));
     el.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", () => {
-      const n = Number(b.dataset.pick);
+      const n = b.dataset.pick === "warn" ? "warn" : Number(b.dataset.pick);
       this.picking = this.picking === n ? null : n;
       this.adding = false;
       this.render();
@@ -311,6 +325,8 @@ export class RouteEditor extends ApplicationV2 {
         break;
       }
       case "start": await setStatus(this.td, "patrolling", { index: 0, dir: 1 }); break;
+      case "runNow": await startRun(this.td, { reason: "sent by the GM" }); break;
+      case "cancelRun": await cancelRun(this.td); break;
       case "stop": await setStatus(this.td, "stopped"); break;
     }
     this.render();
@@ -348,7 +364,9 @@ export class RouteEditor extends ApplicationV2 {
       ev.stopPropagation(); ev.preventDefault();
       const n = this.picking;
       this.picking = null;
-      this.td.update({ [`flags.${MODULE_ID}.reactions.${n}.point`]: this._snapped(this._worldPoint(ev)) }).then(() => this.render());
+      const point = this._snapped(this._worldPoint(ev));
+      const key = n === "warn" ? `flags.${MODULE_ID}.patrol.spotting.warnPoint` : `flags.${MODULE_ID}.reactions.${n}.point`;
+      this.td.update({ [key]: point }, { [MODULE_ID]: true }).then(() => this.render());
       return;
     }
     if (!this.route) return;

@@ -4,6 +4,7 @@
 
 import { checkSpotting } from "./spotting.js";
 import { arrivalUpdate, hasReactions, leaveHiding } from "./reactions.js";
+import { isHeld, warnArrival } from "./messenger.js";
 import { MODULE_ID, cellKey, cellOf, centerOf, clearPathCache, findPath, sameCell, stepInfo, tokenCenter, tokenPositionFor } from "./pathing.js";
 
 /** Per-token runtime state (memory only). */
@@ -110,6 +111,8 @@ async function tick() {
     if (mim && mim.state >= 3) continue;
     const r = rt(td);
     if (now < r.waitUntil) continue;
+    // A messenger held by a grapple, a restraint or the like waits where it is.
+    if (patrol.run && isHeld(td)) continue;
     r.acc += stepsPerTick(td, patrol);
     if (r.acc < 1) continue;
     r.acc -= 1;
@@ -136,7 +139,7 @@ async function tick() {
         r.waitUntil = now + Number(patrol.goal.wait) * 1000;
         return;
       }
-      tokenUpdates.push(arrivalUpdate(td, patrol));
+      tokenUpdates.push(patrol.goal.then === "warn" ? warnArrival(td) : arrivalUpdate(td, patrol));
     };
 
     if (moving && sameCell(cur, target)) { arrive(); continue; }
@@ -265,7 +268,9 @@ function onManualMove(td, changes, options) {
   if (options?.[MODULE_ID] || !isActiveGM()) return;
   if (!("x" in changes || "y" in changes)) return;
   const patrol = getPatrol(td);
-  // Moved while following the alert: it stays where the GM put it.
+  // Moved while following the alert (or running to warn): it stays where the GM put it.
+  if (patrol?.run) return td.update({ [`flags.${MODULE_ID}.patrol.status`]: "holding", [`flags.${MODULE_ID}.patrol.-=goal`]: null,
+    [`flags.${MODULE_ID}.patrol.-=run`]: null, [`flags.${MODULE_ID}.patrol.-=reactSpeed`]: null }, { [MODULE_ID]: true });
   if (patrol?.status === "moving") return setStatus(td, "holding");
   if (patrol?.status === "holding") return;
   if (!patrol?.route) return;

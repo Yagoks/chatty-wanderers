@@ -53,8 +53,8 @@ the patroller is invisible or hiding.
 Per patroller (route window → Vision):
 - **Noticing:** ask me (card with Passive / Searching / False alarm buttons), passive Perception automatically, or a
   Perception roll automatically — the automatic ones send the Stealth request to the players right away.
-- **Discovering:** stop and wait, or start combat (patroller + discovered creatures, NPC initiative rolled, combat
-  begun). The card also has a "Start combat" button.
+- **Discovering:** stop and wait, start combat (patroller + discovered creatures, NPC initiative rolled, combat
+  begun), or **run to warn** (below). The card also has a "Start combat" button.
 
 - The patroller stops and faces the target; the game can pause.
 - The GM gets a card: **Standing** (DC = passive Perception), **Searching** (roll Perception, DC = result), or
@@ -62,6 +62,18 @@ Per patroller (route window → Vision):
 - The targets roll Stealth: each player from their own client (GM rolls on timeout), through Epic Rolls, or all by the
   GM. Anyone who fails is **discovered**: the patroller becomes *alerted*, the `chatty-wanderers.discovered` hook fires
   and an optional macro runs. Otherwise it carries on, and won't spot the same target again for a while.
+
+## Messengers: run to warn
+Discovering → **Runs to warn**: set the point it runs to (a red "!" diamond on the map) and its speed (×2 by default).
+- When it discovers someone it leaves its route and runs there on its own; when it arrives the scene alert goes up one
+  level and it stays there. **Send it to warn now** (route window) starts the run by hand.
+- **Hit on the way** (outside combat): it stops where it is, the game pauses and the GM gets a card: **Start combat**
+  (with the player characters within 60 ft), **Carry on running** or **Cancel the run**.
+- **Joining a combat cancels the run for good**: during combat the GM plays it like any NPC, and it never runs off on its
+  own afterwards. Dropping to 0 HP cancels it too.
+- Grappled, restrained, paralyzed, stunned, incapacitated, petrified or unconscious: it waits where it is until free.
+- Moving it by hand ends the run. While running it doesn't spot anyone else, and alert reactions leave it alone.
+- API: `api.runToWarn(token)`, `api.cancelRun(token)`. Hooks: `chatty-wanderers.runStarted`, `chatty-wanderers.warned`.
 
 ## Scene alert
 - Enable it from **Scene Configuration → Alert of this scene…**; afterwards the bell in the module's flyout (footprints button in the Token controls, orange above level 0) opens it.

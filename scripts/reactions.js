@@ -114,6 +114,8 @@ export async function applyReactions(scene, level, opts = {}, config = {}) {
   const updates = [];
   for (const td of scene.tokens) {
     if (!hasReactions(td) && !getPatrol(td)?.home) continue;
+    // A messenger keeps running; the alert it brings is what matters.
+    if (getPatrol(td)?.run) continue;
     const eff = effectiveReaction(td, level);
     const p = getPatrol(td) ?? {};
     // Only a change of reaction moves the token (a raise that stays on the same reaction changes nothing).
