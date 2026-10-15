@@ -213,12 +213,14 @@ export function registerVision() {
     requestAnimationFrame(() => { pending = false; drawCones(); });
   };
   Hooks.on("refreshToken", token => { if (watches(getPatrol(token.document))) schedule(); });
-  Hooks.on("updateToken", (td, changes) => { if (foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) schedule(); });
+  Hooks.on("updateToken", (td, changes) => { if (foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`) || "hidden" in changes) schedule(); });
   for (const h of ["createWall", "updateWall", "deleteWall", "lightingRefresh"]) Hooks.on(h, () => { clearCones(); schedule(); });
   Hooks.on("canvasReady", () => { clearCones(); layer = null; schedule(); });
   // A player's sight changed (they moved, a door opened): cones appear and disappear with the tokens they see.
   // (game.user doesn't exist yet at init: decide when it fires.)
   Hooks.on("sightRefresh", () => { if (!game.user?.isGM) schedule(); });
-  Hooks.on("deleteToken", td => conePolys.delete(td.id));
+  // A patroller added or removed: draw again (a deleted token's cone would otherwise stay on the canvas).
+  Hooks.on("createToken", td => { if (watches(getPatrol(td))) schedule(); });
+  Hooks.on("deleteToken", td => { conePolys.delete(td.id); schedule(); });
   return schedule;
 }
